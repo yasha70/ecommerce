@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Tools — Blouse Business Dashboard</title>
+<style>
+  :root{
+    --ink:#1f2420; --paper:#f7f5ef; --panel:#ffffff; --line:#dcd8cc;
+    --moss:#3c5a44; --moss-dark:#2a4130; --rust:#a6432f; --gold:#b6862c;
+    --mono:'IBM Plex Mono','SF Mono',monospace; --serif:'Source Serif Pro',Georgia,serif; --sans:'Inter',-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  .app-root{font-family:var(--sans);background:var(--paper);color:var(--ink);min-height:100%;}
+  .app-shell{display:flex;min-height:100vh;}
+
+  .app-sidebar{
+    width:220px;flex:0 0 220px;background:var(--moss-dark);color:#eef0ea;
+    padding:26px 18px;position:sticky;top:0;height:100vh;
+  }
+  .app-brand{font-family:var(--serif);font-size:19px;font-weight:600;margin-bottom:4px;color:#fff;}
+  .app-brand-sub{font-size:11.5px;color:#9db2a1;margin-bottom:26px;}
+  .app-nav-item{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;
+    font-size:13.5px;font-weight:600;cursor:pointer;color:#cfd9cf;margin-bottom:4px;
+    transition:background .15s,color .15s;
+  }
+  .app-nav-item:hover{background:#33503c;color:#fff;}
+  .app-nav-item.active{background:#fff;color:var(--moss-dark);}
+  .app-nav-icon{font-size:16px;width:20px;text-align:center;}
+
+  .app-main{flex:1;padding:32px 36px 60px;max-width:980px;}
+  @media (max-width:820px){
+    .app-shell{flex-direction:column;}
+    .app-sidebar{width:100%;flex:none;height:auto;position:static;padding:18px 20px;}
+    .app-nav{display:flex;gap:8px;overflow-x:auto;}
+    .app-nav-item{white-space:nowrap;}
+    .app-main{padding:24px 18px 50px;}
+  }
+
+  .panel-head{margin-bottom:24px;border-bottom:2px solid var(--ink);padding-bottom:14px;}
+  .panel-head h1{font-family:var(--serif);font-size:25px;font-weight:600;margin:0 0 6px;letter-spacing:-0.01em;}
+  .panel-head p{margin:0;color:#5a5f57;font-size:14px;max-width:600px;}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px 20px;margin-bottom:18px;}
+  .card h2{font-size:14px;font-weight:600;margin:0 0 4px;color:var(--moss-dark);}
+  .card .sub{font-size:12.5px;color:#7a7f76;margin:0 0 14px;}
+
+  .tabs{display:flex;gap:8px;margin-bottom:0;}
+  .tab{padding:9px 16px;border:1px solid var(--line);border-radius:6px 6px 0 0;background:#eeece3;color:#6a6f66;font-size:13px;font-weight:600;cursor:pointer;border-bottom:none;}
+  .tab.active{background:var(--panel);color:var(--moss-dark);border-bottom:2px solid var(--panel);position:relative;top:1px;}
+
+  .drop{border:1.5px dashed var(--line);border-radius:5px;padding:22px 14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:#fbfaf6;}
+  .drop:hover,.drop.drag{border-color:var(--moss);background:#f2f6f0;}
+  .drop input{display:none;}
+  .drop .fname{font-size:13px;color:var(--moss-dark);font-weight:600;margin-top:6px;word-break:break-all;}
+  .drop .hint{font-size:12px;color:#8a8f84;margin-top:4px;}
+  .drop .icon{font-size:22px;opacity:.5;}
+
+  .filelist{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+  .fileitem{display:flex;align-items:center;justify-content:space-between;background:#f4f6f2;border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-size:12.5px;}
+  .fileitem .status{font-family:var(--mono);font-size:11px;color:#8a8f84;}
+  .fileitem .status.done{color:var(--moss-dark);}
+  .fileitem .status.err{color:var(--rust);}
+  .fileitem .remove{cursor:pointer;color:#b0968f;font-weight:700;margin-left:8px;}
+
+  .params-row{display:flex;gap:20px;flex-wrap:wrap;}
+  .field{display:flex;flex-direction:column;gap:5px;min-width:150px;}
+  .field label{font-size:12px;color:#5a5f57;}
+  .field .row{display:flex;align-items:center;gap:6px;}
+  .field .row span{color:#8a8f84;font-size:13px;}
+  .field input{border:1px solid var(--line);border-radius:4px;padding:7px 9px;font-size:14px;width:88px;font-family:var(--sans);color:var(--ink);}
+  .field input:focus{outline:2px solid var(--moss);outline-offset:1px;}
+
+  .run{display:inline-flex;align-items:center;gap:8px;background:var(--moss);color:#fff;border:none;padding:11px 22px;border-radius:5px;font-size:14.5px;font-weight:600;cursor:pointer;transition:background .15s;margin-top:14px;}
+  .run:hover{background:var(--moss-dark);}
+  .run:disabled{background:#b7bcb2;cursor:not-allowed;}
+
+  .errbox .error{background:#fbe9e6;border:1px solid #e3b3a8;color:var(--rust);padding:10px 14px;border-radius:5px;font-size:13px;margin-top:14px;}
+
+  .results{margin-top:26px;}
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+  @media (max-width:720px){.summary{grid-template-columns:repeat(2,1fr);}}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;}
+  .stat .label{font-size:11.5px;color:#7a7f76;margin-bottom:6px;}
+  .stat .value{font-family:var(--serif);font-size:21px;font-weight:600;}
+  .stat.profit .value{color:var(--moss-dark);}
+  .stat.warn .value{color:var(--rust);}
+
+  .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:auto;max-height:520px;}
+  table.datatable{width:100%;border-collapse:collapse;font-size:13px;}
+  table.datatable thead th{position:sticky;top:0;background:var(--moss-dark);color:#fff;text-align:left;padding:10px 12px;font-weight:600;font-size:12px;cursor:pointer;user-select:none;white-space:nowrap;}
+  table.datatable thead th:hover{background:var(--moss);}
+  table.datatable thead th .arrow{opacity:.6;font-size:10px;margin-left:4px;}
+  table.datatable td{padding:9px 12px;border-bottom:1px solid #ece9de;white-space:nowrap;}
+  table.datatable tbody tr:hover{background:#f4f6f2;}
+  table.datatable td.num{text-align:right;font-family:var(--mono);font-size:12.5px;}
+  table.datatable td.neg{color:var(--rust);}
+  table.datatable tfoot td{font-weight:700;border-top:2px solid var(--ink);background:#f1efe6;}
+
+  .note{font-size:12px;color:#8a8f84;margin-top:10px;}
+  .downloadlink{display:inline-block;margin-top:14px;font-size:13px;color:var(--moss-dark);text-decoration:underline;cursor:pointer;}
+  .hidden{display:none;}
+  .pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:10px;background:#eef2ec;color:var(--moss-dark);font-family:var(--mono);}
+</style>
+</head>
+<body>
+<div class="app-root">
+  <div class="app-shell">
+
+    <div class="app-sidebar">
+      <div class="app-brand">Order Tools</div>
+      <div class="app-brand-sub">Blouse business dashboard</div>
+      <div class="app-nav">
+        <div class="app-nav-item active" data-page="size"><span class="app-nav-icon">&#128203;</span> Size Summary</div>
+        <div class="app-nav-item" data-page="profit"><span class="app-nav-icon">&#8377;</span> Profit &amp; Returns</div>
+      </div>
+    </div>
+
+    <div class="app-main">
+
+      <!-- ============ PAGE: SIZE SUMMARY ============ -->
+      <div id="page-size">
+        <div class="panel-head">
+          <h1>SKU × Size Summary</h1>
+          <p>Upload an orders CSV, or a picklist screenshot/PDF from any supplier — either way you get every size grouped into L (26–30), XL (32–34), XXL (36–40) and counted per SKU.</p>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" data-szTab="csv">Orders CSV</div>
+          <div class="tab" data-szTab="picklist">Picklist screenshot / PDF</div>
+        </div>
+
+        <div class="card" id="sz-tabCsv">
+          <h2>Orders file</h2>
+          <p class="sub">Needs columns: SKU and Size (Quantity used too if present)</p>
+          <div class="drop" id="sz-dropOrders">
+            <div class="icon">&#128194;</div>
+            <div class="hint">Click or drop the Orders CSV here</div>
+            <div class="fname" id="sz-fnameOrders"></div>
+            <input type="file" id="sz-fileOrders" accept=".csv" />
+          </div>
+        </div>
+
+        <div class="card hidden" id="sz-tabPicklist">
+          <h2>Picklist screenshot(s) or PDF(s)</h2>
+          <p class="sub">Drop one or more picklist images/PDFs (SKU / Color / Size / Total Quantity table) — each is read automatically.</p>
+          <div class="drop" id="sz-dropPicklist">
+            <div class="icon">&#128248;</div>
+            <div class="hint">Click or drop picklist image(s)/PDF(s) here</div>
+            <input type="file" id="sz-filePicklist" accept=".png,.jpg,.jpeg,.pdf" multiple />
+          </div>
+          <div class="filelist" id="sz-picklistFiles"></div>
+        </div>
+
+        <button class="run" id="sz-runBtn">Summarize</button>
+        <div class="errbox" id="sz-errBox"></div>
+
+        <div class="results" id="sz-results" style="display:none;">
+          <div class="summary" id="sz-summaryCards"></div>
+          <div class="tablewrap">
+            <table class="datatable" id="sz-skuTable">
+              <thead><tr id="sz-tableHead"></tr></thead>
+              <tbody id="sz-tableBody"></tbody>
+              <tfoot><tr id="sz-tableFoot"></tr></tfoot>
+            </table>
+          </div>
+          <div class="downloadlink" id="sz-downloadCsv">&#8681; Download this summary as CSV</div>
+          <p class="note">Free-Size:30&ndash;34 counted as XL, Free-Size:36&ndash;40 as XXL &middot; "Alterable" ignored for grouping.</p>
+        </div>
+      </div>
+
+      <!-- ============ PAGE: PROFIT & RETURNS ============ -->
+      <div id="page-profit" class="hidden">
+        <div class="panel-head">
+          <h1>Order Profit &amp; Return Calculator</h1>
+          <p>Upload your orders export and (optionally) a returns report. Works out combo size from the product name, real delivered profit, and per-SKU customer-return rate.</p>
+        </div>
+
+        <div class="card">
+          <h2>Orders file <span class="pill">required</span></h2>
+          <p class="sub">Needs: SKU, Product Name, Reason for Credit Entry, Supplier Discounted Price</p>
+          <div class="drop" id="pf-dropOrders">
+            <div class="icon">&#128194;</div>
+            <div class="hint">Click or drop the Orders CSV here</div>
+            <div class="fname" id="pf-fnameOrders"></div>
+            <input type="file" id="pf-fileOrders" accept=".csv" />
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Returns file <span class="pill">optional</span></h2>
+          <p class="sub">Needs: SKU, Type of Return, Sub Type — header row auto-detected</p>
+          <div class="drop" id="pf-dropReturns">
+            <div class="icon">&#128194;</div>
+            <div class="hint">Click or drop the Returns CSV here</div>
+            <div class="fname" id="pf-fnameReturns"></div>
+            <input type="file" id="pf-fileReturns" accept=".csv" />
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Cost assumptions</h2>
+          <div class="params-row">
+            <div class="field"><label>Cost per blouse</label><div class="row"><span>&#8377;</span><input type="number" id="pf-pBlouse" value="42" /></div></div>
+            <div class="field"><label>Fixed cost per order</label><div class="row"><span>&#8377;</span><input type="number" id="pf-pFixed" value="45" /></div></div>
+            <div class="field"><label>Customer return charge</label><div class="row"><span>&#8377;</span><input type="number" id="pf-pReturn" value="157" /></div></div>
+          </div>
+        </div>
+
+        <button class="run" id="pf-runBtn">Calculate profit</button>
+        <div class="errbox" id="pf-errBox"></div>
+
+        <div class="results" id="pf-results" style="display:none;">
+          <div class="summary" id="pf-summaryCards"></div>
+          <div class="tablewrap">
+            <table class="datatable" id="pf-skuTable">
+              <thead><tr id="pf-tableHead"></tr></thead>
+              <tbody id="pf-tableBody"></tbody>
+              <tfoot><tr id="pf-tableFoot"></tr></tfoot>
+            </table>
+          </div>
+          <p class="note">Profit is calculated only on DELIVERED orders. RTO/courier-return rows are never charged unless your Returns file marks them as "Customer Return".</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const root = document.currentScript.parentElement;
+
+  // ---------- Page nav ----------
+  root.querySelectorAll('.app-nav-item').forEach(item=>{
+    item.addEventListener('click', ()=>{
+      root.querySelectorAll('.app-nav-item').forEach(i=>i.classList.remove('active'));
+      item.classList.add('active');
+      const page = item.getAttribute('data-page');
+      root.querySelector('#page-size').classList.toggle('hidden', page!=='size');
+      root.querySelector('#page-profit').classList.toggle('hidden', page!=='profit');
+    });
+  });
+
+  // ---------- Shared helpers ----------
+  function norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function findHeaderRow(rows, requiredGroups){
+    for(let i=0;i<Math.min(rows.length,20);i++){
+      const cells = rows[i].map(c=>norm(c));
+      const ok = requiredGroups.every(group=>{
+        const tokens = group.map(norm);
+        return cells.some(cell=> tokens.every(t=>cell.includes(t)));
+      });
+      if(ok) return i;
+    }
+    return -1;
+  }
+  function colIndex(headerRow, group){
+    const tokens = group.map(norm);
+    for(let i=0;i<headerRow.length;i++){
+      const cell = norm(headerRow[i]);
+      if(tokens.every(t=>cell.includes(t))) return i;
+    }
+    return -1;
+  }
+  function parseCSVFile(file){
+    return new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onload = e=>{ try{ resolve(Papa.parse(e.target.result,{skipEmptyLines:true}).data); }catch(err){reject(err);} };
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+  function fmtMoney(n){ return '\u20b9' + Math.round(n).toLocaleString('en-IN'); }
+  function wireDrop(dropEl, inputEl, onFiles, multi){
+    dropEl.addEventListener('click', ()=>inputEl.click());
+    inputEl.addEventListener('change', e=>{ if(e.target.files.length) onFiles(e.target.files); });
+    ['dragover','dragenter'].forEach(ev=>dropEl.addEventListener(ev, e=>{e.preventDefault(); dropEl.classList.add('drag');}));
+    ['dragleave','drop'].forEach(ev=>dropEl.addEventListener(ev, e=>{e.preventDefault(); dropEl.classList.remove('drag');}));
+    dropEl.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) onFiles(e.dataTransfer.files); });
+  }
+  function sortableTable(headEl, bodyEl, footEl, columns, getData, renderRow, renderFoot, initialSort){
+    let sort = {...initialSort};
+    function draw(){
+      headEl.innerHTML = columns.map(c=>{
+        const arrow = sort.key===c.key ? (sort.dir===1?'&#9650;':'&#9660;') : '';
+        return `<th data-key="${c.key}">${c.label} <span class="arrow">${arrow}</span></th>`;
+      }).join('');
+      headEl.querySelectorAll('th').forEach(th=>{
+        th.addEventListener('click', ()=>{
+          const key = th.getAttribute('data-key');
+          if(sort.key===key) sort.dir *= -1; else sort = {key, dir:-1};
+          draw();
+        });
+      });
+      const data = [...getData()].sort((a,b)=>{
+        const av=a[sort.key], bv=b[sort.key];
+        if(typeof av === 'string') return av.localeCompare(bv)*sort.dir;
+        return ((av||0)-(bv||0))*sort.dir;
+      });
+      bodyEl.innerHTML = data.map(renderRow).join('');
+      if(footEl) footEl.innerHTML = renderFoot(getData());
+    }
+    return {draw};
+  }
+
+  /* =========================================================
+     SIZE SUMMARY TOOL
+  ========================================================= */
+  (function(){
+    let ordersFile = null;
+    let picklistFiles = [];
+    let activeTab = 'csv';
+
+    root.querySelectorAll('[data-szTab]').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        root.querySelectorAll('[data-szTab]').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.getAttribute('data-szTab');
+        root.querySelector('#sz-tabCsv').classList.toggle('hidden', activeTab!=='csv');
+        root.querySelector('#sz-tabPicklist').classList.toggle('hidden', activeTab!=='picklist');
+      });
+    });
+
+    const fnameO = root.querySelector('#sz-fnameOrders');
+    wireDrop(root.querySelector('#sz-dropOrders'), root.querySelector('#sz-fileOrders'), files=>{
+      ordersFile = files[0]; fnameO.textContent = files[0].name;
+    });
+
+    const listEl = root.querySelector('#sz-picklistFiles');
+    function renderPicklistFiles(){
+      listEl.innerHTML = picklistFiles.map((p,i)=>`
+        <div class="fileitem"><span>${p.file.name}</span><span>
+          <span class="status ${p.status==='done'?'done':p.status==='error'?'err':''}">${p.status}</span>
+          <span class="remove" data-i="${i}">&times;</span></span></div>`).join('');
+      listEl.querySelectorAll('.remove').forEach(el=>{
+        el.addEventListener('click', ()=>{ picklistFiles.splice(parseInt(el.getAttribute('data-i'),10),1); renderPicklistFiles(); });
+      });
+    }
+    wireDrop(root.querySelector('#sz-dropPicklist'), root.querySelector('#sz-filePicklist'), files=>{
+      Array.from(files).forEach(f=>picklistFiles.push({file:f, status:'pending'}));
+      renderPicklistFiles();
+    });
+
+    function bucketOf(sizeRaw){
+      let s = String(sizeRaw||'').trim().replace(/\s*alterable\s*/i,'').trim();
+      const sLower = s.toLowerCase().replace(/\s+/g,'');
+      if(sLower.includes('30-34')) return 'XL';
+      if(sLower.includes('36-40')) return 'XXL';
+      const up = s.toUpperCase();
+      if(up==='L'||up==='26'||up==='28'||up==='30') return 'L';
+      if(up==='XL'||up==='32'||up==='34') return 'XL';
+      if(up==='XXL'||up==='36'||up==='38'||up==='40') return 'XXL';
+      return 'Other';
+    }
+
+    function fileToBase64(file){
+      return new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function extractPicklistRows(file){
+      const base64 = await fileToBase64(file);
+      const mediaType = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png');
+      const contentBlock = mediaType === 'application/pdf'
+        ? {type:'document', source:{type:'base64', media_type:'application/pdf', data:base64}}
+        : {type:'image', source:{type:'base64', media_type:mediaType, data:base64}};
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model:'claude-sonnet-4-6', max_tokens:4000,
+          messages:[{role:'user', content:[contentBlock,
+            {type:'text', text:'This is a picklist table (columns like SKU, Color, Size, Total Quantity). Extract every data row. Respond with ONLY a JSON array, no markdown fences, no explanation: [{"sku":"...","color":"...","size":"...","qty":1}, ...]. Include rows from all tables on the page.'}
+          ]}]
+        })
+      });
+      const data = await response.json();
+      const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+      const cleaned = text.replace(/```json/gi,'').replace(/```/g,'').trim();
+      const s = cleaned.indexOf('['), e = cleaned.lastIndexOf(']');
+      if(s===-1||e===-1) throw new Error('Could not read a table from this file.');
+      return JSON.parse(cleaned.slice(s,e+1));
+    }
+
+    let szData = [];
+    async function runSizeSummary(){
+      const errBox = root.querySelector('#sz-errBox'); errBox.innerHTML='';
+      const runBtn = root.querySelector('#sz-runBtn');
+      const bySku = {};
+      function addRow(sku, size, qty){
+        const bucket = bucketOf(size);
+        if(!bySku[sku]) bySku[sku] = {sku, L:0, XL:0, XXL:0, Other:0, total:0};
+        bySku[sku][bucket] += qty; bySku[sku].total += qty;
+      }
+      try{
+        if(activeTab==='csv'){
+          if(!ordersFile){ errBox.innerHTML='<div class="error">Please upload the Orders CSV first.</div>'; return; }
+          runBtn.disabled=true; runBtn.textContent='Summarizing...';
+          const rows = await parseCSVFile(ordersFile);
+          const hi = findHeaderRow(rows,[['sku'],['size']]);
+          if(hi===-1) throw new Error('Could not find SKU and Size columns.');
+          const header = rows[hi];
+          const iSku=colIndex(header,['sku']), iSize=colIndex(header,['size']), iQty=colIndex(header,['quantity']);
+          rows.slice(hi+1).filter(r=>r.length>=header.length && r[iSku]).forEach(r=>{
+            addRow(r[iSku], r[iSize], iQty!==-1 ? (parseInt(r[iQty],10)||1) : 1);
+          });
+        } else {
+          if(picklistFiles.length===0){ errBox.innerHTML='<div class="error">Please add at least one picklist image or PDF.</div>'; return; }
+          runBtn.disabled=true; runBtn.textContent='Reading picklists...';
+          for(const p of picklistFiles){
+            p.status='reading...'; renderPicklistFiles();
+            try{ const rows = await extractPicklistRows(p.file); rows.forEach(r=>addRow(r.sku,r.size,parseInt(r.qty,10)||1)); p.status='done'; }
+            catch(err){ p.status='error'; }
+            renderPicklistFiles();
+          }
+        }
+        szData = Object.values(bySku).sort((a,b)=>b.total-a.total);
+        if(szData.length===0) throw new Error('No rows could be read.');
+        renderSzResults();
+      }catch(err){ errBox.innerHTML='<div class="error">'+err.message+'</div>'; }
+      finally{ runBtn.disabled=false; runBtn.textContent='Summarize'; }
+    }
+
+    function renderSzResults(){
+      root.querySelector('#sz-results').style.display='block';
+      const t=k=>szData.reduce((s,r)=>s+r[k],0);
+      root.querySelector('#sz-summaryCards').innerHTML = [
+        {label:'Total pieces', value:t('total').toLocaleString('en-IN')},
+        {label:'L (26-30)', value:t('L').toLocaleString('en-IN')},
+        {label:'XL (32-34)', value:t('XL').toLocaleString('en-IN')},
+        {label:'XXL (36-40)', value:t('XXL').toLocaleString('en-IN')},
+      ].map(c=>`<div class="stat"><div class="label">${c.label}</div><div class="value">${c.value}</div></div>`).join('');
+
+      const cols=[{key:'sku',label:'SKU'},{key:'L',label:'L (26-30)'},{key:'XL',label:'XL (32-34)'},{key:'XXL',label:'XXL (36-40)'},{key:'Other',label:'Other'},{key:'total',label:'Total'}];
+      const tbl = sortableTable(
+        root.querySelector('#sz-tableHead'), root.querySelector('#sz-tableBody'), root.querySelector('#sz-tableFoot'),
+        cols, ()=>szData,
+        r=>`<tr><td>${r.sku}</td><td class="num">${r.L}</td><td class="num">${r.XL}</td><td class="num">${r.XXL}</td><td class="num">${r.Other}</td><td class="num">${r.total}</td></tr>`,
+        data=>`<td>TOTAL</td><td class="num">${data.reduce((s,r)=>s+r.L,0)}</td><td class="num">${data.reduce((s,r)=>s+r.XL,0)}</td><td class="num">${data.reduce((s,r)=>s+r.XXL,0)}</td><td class="num">${data.reduce((s,r)=>s+r.Other,0)}</td><td class="num">${data.reduce((s,r)=>s+r.total,0)}</td>`,
+        {key:'total', dir:-1}
+      );
+      tbl.draw();
+    }
+
+    root.querySelector('#sz-downloadCsv').addEventListener('click', ()=>{
+      const rows=[['SKU','L (26-30)','XL (32-34)','XXL (36-40)','Other','Total']];
+      szData.forEach(r=>rows.push([r.sku,r.L,r.XL,r.XXL,r.Other,r.total]));
+      const csv = rows.map(r=>r.join(',')).join('\n');
+      const blob = new Blob([csv],{type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='sku_size_summary.csv'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    root.querySelector('#sz-runBtn').addEventListener('click', runSizeSummary);
+  })();
+
+  /* =========================================================
+     PROFIT & RETURNS TOOL
+  ========================================================= */
+  (function(){
+    let ordersFile = null, returnsFile = null;
+    const fnO = root.querySelector('#pf-fnameOrders'), fnR = root.querySelector('#pf-fnameReturns');
+    wireDrop(root.querySelector('#pf-dropOrders'), root.querySelector('#pf-fileOrders'), files=>{ ordersFile=files[0]; fnO.textContent=files[0].name; });
+    wireDrop(root.querySelector('#pf-dropReturns'), root.querySelector('#pf-fileReturns'), files=>{ returnsFile=files[0]; fnR.textContent=files[0].name; });
+
+    function extractCombo(name){ const m = String(name||'').match(/pack\s*of\s*(\d+)/i); return m ? parseInt(m[1],10) : null; }
+
+    let pfData = [], pfHasReturns=false;
+
+    async function runProfit(){
+      const errBox = root.querySelector('#pf-errBox'); errBox.innerHTML='';
+      if(!ordersFile){ errBox.innerHTML='<div class="error">Please upload the Orders CSV.</div>'; return; }
+      const runBtn = root.querySelector('#pf-runBtn');
+      runBtn.disabled=true; runBtn.textContent='Calculating...';
+      try{
+        const perBlouse = parseFloat(root.querySelector('#pf-pBlouse').value)||0;
+        const fixedCost = parseFloat(root.querySelector('#pf-pFixed').value)||0;
+
+        const ordersRows = await parseCSVFile(ordersFile);
+        const oHi = findHeaderRow(ordersRows,[['sku'],['product','name'],['reason','credit'],['discounted','price']]);
+        if(oHi===-1) throw new Error('Could not find the expected columns (SKU, Product Name, Reason for Credit Entry, Supplier Discounted Price).');
+        const oH = ordersRows[oHi];
+        const iSku=colIndex(oH,['sku']), iName=colIndex(oH,['product','name']), iStatus=colIndex(oH,['reason','credit']), iSettle=colIndex(oH,['discounted','price']);
+        const orderData = ordersRows.slice(oHi+1).filter(r=>r.length>=oH.length && r[iSku]);
+
+        let returnsData=null, rSku=-1, rType=-1;
+        if(returnsFile){
+          const rRows = await parseCSVFile(returnsFile);
+          const rHi = findHeaderRow(rRows,[['sku'],['type','return']]);
+          if(rHi!==-1){
+            const rH = rRows[rHi];
+            rSku = colIndex(rH,['sku']); rType = colIndex(rH,['type','return']);
+            returnsData = rRows.slice(rHi+1).filter(r=>r.length>=rH.length && r[rSku]);
+          }
+        }
+
+        const bySku = {};
+        function get(sku){ if(!bySku[sku]) bySku[sku] = {sku, combo:null, totalOrders:0, delivered:0, settlement:0, cost:0, custReturns:0}; return bySku[sku]; }
+        const comboBySku = {};
+        orderData.forEach(r=>{ const sku=r[iSku]; if(comboBySku[sku]==null){ const c=extractCombo(r[iName]); if(c!=null) comboBySku[sku]=c; } });
+        orderData.forEach(r=>{
+          const sku=r[iSku]; const rec=get(sku); rec.combo = comboBySku[sku] ?? null; rec.totalOrders+=1;
+          const status = String(r[iStatus]||'').trim().toUpperCase();
+          if(status==='DELIVERED'){
+            rec.delivered+=1;
+            const settle = parseFloat(String(r[iSettle]).replace(/[^0-9.\-]/g,''))||0;
+            rec.settlement += settle;
+            rec.cost += (rec.combo||0)*perBlouse + fixedCost;
+          }
+        });
+        if(returnsData){
+          returnsData.forEach(r=>{ const sku=r[rSku]; const type=norm(r[rType]); if(type.includes('customerreturn')){ get(sku).custReturns+=1; } });
+        }
+        pfHasReturns = returnsData!==null;
+        pfData = Object.values(bySku).map(rec=>({...rec, profit: rec.settlement-rec.cost, returnPct: rec.totalOrders>0 ? rec.custReturns/rec.totalOrders*100 : 0})).sort((a,b)=>b.profit-a.profit);
+        renderPfResults();
+      }catch(err){ errBox.innerHTML='<div class="error">'+err.message+'</div>'; }
+      finally{ runBtn.disabled=false; runBtn.textContent='Calculate profit'; }
+    }
+
+    function renderPfResults(){
+      root.querySelector('#pf-results').style.display='block';
+      const totalDelivered = pfData.reduce((s,r)=>s+r.delivered,0);
+      const totalOrders = pfData.reduce((s,r)=>s+r.totalOrders,0);
+      const totalProfit = pfData.reduce((s,r)=>s+r.profit,0);
+      const totalCustReturns = pfData.reduce((s,r)=>s+r.custReturns,0);
+      const overallPct = totalOrders>0 ? totalCustReturns/totalOrders*100 : 0;
+      const cards = [
+        {label:'Delivered orders', value: totalDelivered.toLocaleString('en-IN')},
+        {label:'Net profit', value: fmtMoney(totalProfit), cls:'profit'},
+        {label:'Avg profit / delivered order', value: fmtMoney(totalDelivered? totalProfit/totalDelivered:0)},
+      ];
+      if(pfHasReturns) cards.push({label:'Customer return rate', value: overallPct.toFixed(2)+'%', cls: overallPct>15?'warn':''});
+      else cards.push({label:'Total orders placed', value: totalOrders.toLocaleString('en-IN')});
+      root.querySelector('#pf-summaryCards').innerHTML = cards.map(c=>`<div class="stat ${c.cls||''}"><div class="label">${c.label}</div><div class="value">${c.value}</div></div>`).join('');
+
+      const cols=[{key:'sku',label:'SKU'},{key:'combo',label:'Combo'},{key:'totalOrders',label:'Orders'},{key:'delivered',label:'Delivered'},
+        {key:'settlement',label:'Settlement'},{key:'cost',label:'Cost'},{key:'profit',label:'Net Profit'},{key:'custReturns',label:'Returns'},{key:'returnPct',label:'Return %'}];
+      const tbl = sortableTable(
+        root.querySelector('#pf-tableHead'), root.querySelector('#pf-tableBody'), root.querySelector('#pf-tableFoot'),
+        cols, ()=>pfData,
+        r=>`<tr><td>${r.sku}</td><td class="num">${r.combo??'—'}</td><td class="num">${r.totalOrders}</td><td class="num">${r.delivered}</td>
+          <td class="num">${fmtMoney(r.settlement)}</td><td class="num">${fmtMoney(r.cost)}</td><td class="num ${r.profit<0?'neg':''}">${fmtMoney(r.profit)}</td>
+          <td class="num">${pfHasReturns?r.custReturns:'—'}</td><td class="num">${pfHasReturns?r.returnPct.toFixed(2)+'%':'—'}</td></tr>`,
+        data=>{
+          const t=k=>data.reduce((s,r)=>s+(r[k]||0),0);
+          return `<td>TOTAL</td><td></td><td class="num">${t('totalOrders')}</td><td class="num">${t('delivered')}</td>
+            <td class="num">${fmtMoney(t('settlement'))}</td><td class="num">${fmtMoney(t('cost'))}</td><td class="num">${fmtMoney(t('profit'))}</td>
+            <td class="num">${t('custReturns')}</td><td class="num">${(t('totalOrders')? t('custReturns')/t('totalOrders')*100:0).toFixed(2)}%</td>`;
+        },
+        {key:'profit', dir:-1}
+      );
+      tbl.draw();
+    }
+
+    root.querySelector('#pf-runBtn').addEventListener('click', runProfit);
+  })();
+
+})();
+</script>
+</body>
+</html>
