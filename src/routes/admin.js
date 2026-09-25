@@ -42,6 +42,8 @@ function productInput(body) {
     name, slug: slugify(body.slug || name), description: str(body.description, 5000),
     category_id: Number(body.category_id) || null, fabric: str(body.fabric, 60), sleeve: str(body.sleeve, 60),
     neck: str(body.neck, 60), occasion: str(body.occasion, 60), work: str(body.work, 60), color: str(body.color, 40),
+    swatch: /^#?[0-9a-f]{6}$/i.test(body.swatch || '') ? body.swatch.replace('#', '').toLowerCase() : null,
+    style_code: slugify(str(body.style_code, 60)) || null,
     price, mrp, stock: JSON.stringify(stock), images: JSON.stringify(images),
     tags: str(body.tags, 300).toLowerCase(), featured: body.featured ? 1 : 0, is_new: body.is_new ? 1 : 0,
     custom_stitching: body.custom_stitching ? 1 : 0, active: body.active === false ? 0 : 1,

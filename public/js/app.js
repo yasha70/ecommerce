@@ -1,4 +1,4 @@
-// Silk & Stitch storefront: a small dependency-free single-page app.
+// Storefront: a small dependency-free single-page app.
 import { api, esc, inr, stars, discount, debounce, store, toast, $, $$, formData, dateFmt, statusLabel } from './util.js';
 
 const app = $('#app');
@@ -147,6 +147,7 @@ function productCard(p) {
     <a href="/product/${esc(p.slug)}" data-link class="p-body">
       <span class="p-cat">${esc(p.category || '')}</span>
       <span class="p-name">${esc(p.name)}</span>
+      ${p.variantCount > 1 ? `<span class="p-colours"><i style="background:#${esc(p.swatch || 'ccc')}"></i>${p.variantCount} colours</span>` : ''}
       ${p.ratingCount ? `<span class="rating-line"><span class="rating-chip">${p.rating} ★</span>(${p.ratingCount})</span>` : ''}
       <span class="price"><b>${inr(p.price)}</b>${p.mrp > p.price ? `<s>${inr(p.mrp)}</s><span class="off">${off}% off</span>` : ''}</span>
     </a>
@@ -162,7 +163,7 @@ function emptyState(icon, title, text, cta = '<a class="btn" href="/shop" data-l
 }
 
 function setTitle(t) {
-  document.title = t ? `${t} · ${state.config?.name || 'Silk & Stitch'}` : `${state.config?.name || 'Silk & Stitch'} · Designer Blouses Online`;
+  document.title = t ? `${t} · ${state.config?.name || 'Zariya'}` : `${state.config?.name || 'Zariya'} · Designer Blouses Online`;
 }
 
 function crumbs(parts) {
@@ -270,16 +271,16 @@ function wireSizePicker(root, _p, onChange) {
 
 async function homePage() {
   setTitle('');
-  const hero = ['c=7a1f2b&a=d9b35b&s=elbow&n=sweetheart&p=zari', 'c=1f6b4f&a=e0c070&s=short&n=boat&p=paisley'];
+  const hero = [['shimmer-jacquard-stretch-blouse-bottle-green', 'shimmer-stretch-bottle-green', 'Bottle green'], ['shimmer-jacquard-stretch-blouse-red', 'shimmer-stretch-red', 'Red']];
   app.innerHTML = `
   <section class="hero"><div class="container hero-inner">
-    <div><div class="eyebrow" style="color:var(--gold-light)">Festive Edit 2026</div>
+    <div><div class="eyebrow" style="color:var(--gold-light)">New · The Shimmer Stretch Edit</div>
       <h1>Blouses that make <em>the saree</em> sing.</h1>
-      <p>Handcrafted silk, zari, mirror-work and bridal blouses. Choose a ready size or send us your measurements and our karigars will stitch it to fit you.</p>
-      <div class="hero-ctas"><a class="btn btn-gold" href="/shop" data-link>Shop the collection</a><a class="btn btn-outline" href="/shop?category=bridal" data-link>Bridal edit</a></div>
-      <div class="hero-stats"><div><b>25k+</b><span>Happy customers</span></div><div><b>4.6★</b><span>Average rating</span></div><div><b>7-day</b><span>Easy returns</span></div></div>
+      <p>Ready-to-wear shimmer jacquard blouses that stretch to fit, in four festive colours. Plus silk, designer and bridal blouses, custom stitched to your measurements.</p>
+      <div class="hero-ctas"><a class="btn btn-gold" href="/shop?category=readymade" data-link>Shop the Stretch Edit</a><a class="btn btn-outline" href="/shop" data-link>All blouses</a></div>
+      <div class="hero-stats"><div><b>${inr(499)}</b><span>Starting price</span></div><div><b>32–44</b><span>Sizes in stock</span></div><div><b>${state.config.returnDays}-day</b><span>Easy returns</span></div></div>
     </div>
-    <div class="hero-art">${hero.map((q) => `<img src="/img/blouse.svg?${q}&v=front" alt="Designer blouse">`).join('')}</div>
+    <div class="hero-art">${hero.map(([slug, file, label]) => `<a href="/product/${slug}" data-link><img src="/images/products/${file}.webp" alt="${label} shimmer jacquard stretch blouse"></a>`).join('')}</div>
   </div></section>
   <section class="usp"><div class="container usp-grid">
     <div class="usp-item"><span class="ic">🚚</span><div><b>Free shipping</b><span class="muted small">On orders over ${inr(state.config.freeShippingOver)}</span></div></div>
@@ -297,7 +298,7 @@ async function homePage() {
     <div id="bestsellers">${skeletonGrid(4)}</div>
   </div></section>
   <section class="section" style="padding-top:0"><div class="container promo">
-    <a class="promo-card promo-a" href="/shop?category=cotton" data-link><div class="eyebrow" style="color:var(--gold-light)">Everyday ease</div><h3>Cotton &amp; handloom</h3><p>Ajrakh, Kalamkari and Ikat blouses from ${inr(399)}.</p><img src="/img/blouse.svg?c=23345c&a=b5452f&s=elbow&n=round&p=paisley" alt=""></a>
+    <a class="promo-card promo-a" href="/shop?category=readymade" data-link><div class="eyebrow" style="color:var(--gold-light)">Ready to wear</div><h3>Shimmer Stretch</h3><p>No tailor, no waiting. Four colours, sizes 32–44, from ${inr(499)}.</p><img class="photo" src="/images/products/shimmer-stretch-gold.webp" alt="Gold shimmer stretch blouse"></a>
     <a class="promo-card promo-b" href="/shop?category=bridal" data-link><div class="eyebrow" style="color:#fff3d6">Wedding season</div><h3>The Bridal Edit</h3><p>Maggam, zardosi and pearl work, custom stitched for your big day.</p><img src="/img/blouse.svg?c=a3121f&a=e6c15a&s=elbow&n=sweetheart&p=zari" alt=""></a>
   </div></section>
   <section class="section" style="padding-top:0"><div class="container">
@@ -313,11 +314,11 @@ async function homePage() {
       <div class="stitch-step"><h4>Delivered to you</h4><p class="muted small">Delivered to your door, with free alterations if anything needs a tweak.</p></div>
     </div></div></section>
   <section class="section"><div class="container">
-    <div class="section-head"><div><div class="eyebrow">Reviews</div><h2>What our customers say</h2></div></div>
+    <div class="section-head"><div><div class="eyebrow">Our promise</div><h2>Why shop with ${esc(state.config.name)}</h2></div></div>
     <div class="testimonials">
-      <div class="quote"><span class="stars">★★★★★</span><p>“The custom stitched Kanjivaram blouse fit me better than my local tailor ever managed.”</p><b>Lakshmi R.</b> <span class="muted small">· Chennai</span></div>
-      <div class="quote"><span class="stars">★★★★★</span><p>“Ordered the mirror-work blouse for Navratri, got so many compliments. Super quick delivery!”</p><b>Hetal P.</b> <span class="muted small">· Ahmedabad</span></div>
-      <div class="quote"><span class="stars">★★★★☆</span><p>“Lovely quality cotton blouses for office wear. COD made it easy to try for the first time.”</p><b>Ritu S.</b> <span class="muted small">· Pune</span></div>
+      <div class="quote"><span class="stars">✦</span><p>Stretch that actually fits</p><span class="muted small">Our ready-to-wear blouses stretch comfortably across sizes, so you can skip the tailor queue.</span></div>
+      <div class="quote"><span class="stars">✦</span><p>Try it, risk-free</p><span class="muted small">${state.config.returnDays}-day easy returns on ready sizes, and Cash on Delivery so you can pay when it arrives.</span></div>
+      <div class="quote"><span class="stars">✦</span><p>Honest prices</p><span class="muted small">GST included, free shipping over ${inr(state.config.freeShippingOver)}, and no surprises at checkout.</span></div>
     </div></div></section>
   <section id="recentWrap"></section>`;
 
@@ -461,8 +462,8 @@ async function productPage(slug, params) {
   app.innerHTML = `<div class="container">
   <div style="padding-top:20px">${crumbs([['Shop', '/shop'], [p.category, `/shop?category=${p.categorySlug}`], [p.name]])}</div>
   <div class="pdp">
-    <div class="gallery">
-      <div class="thumbs">${p.images.map((src, i) => `<button class="${i ? '' : 'on'}" data-img="${esc(src)}" aria-label="Image ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>
+    <div class="gallery ${p.images.length < 2 ? 'single' : ''}">
+      <div class="thumbs" ${p.images.length < 2 ? 'hidden' : ''}>${p.images.map((src, i) => `<button class="${i ? '' : 'on'}" data-img="${esc(src)}" aria-label="Image ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>
       <div class="main-img" id="mainImg"><img src="${esc(p.images[0])}" alt="${esc(p.name)}"></div>
     </div>
     <div class="pdp-info">
@@ -471,6 +472,9 @@ async function productPage(slug, params) {
       ${p.ratingCount ? `<a href="#reviews" class="rating-line" id="toReviews"><span class="rating-chip">${p.rating} ★</span>${p.ratingCount} ratings & reviews</a>` : ''}
       <div class="pdp-price"><b>${inr(p.price)}</b>${p.mrp > p.price ? `<s>${inr(p.mrp)}</s><span class="off">${off}% OFF</span>` : ''}</div>
       <div class="muted small">Inclusive of all taxes · ${p.price >= state.config.freeShippingOver ? 'Free shipping' : `Free shipping over ${inr(state.config.freeShippingOver)}`}</div>
+      ${p.variants.length > 1 ? `<div class="opt-label"><span>Colour: <b>${esc(p.color)}</b></span><span class="muted small">${p.variants.length} colours</span></div>
+        <div class="swatches">${p.variants.map((v) => `<a href="/product/${esc(v.slug)}" data-link class="swatch ${v.slug === p.slug ? 'on' : ''} ${v.inStock ? '' : 'oos'}" title="${esc(v.color)}" aria-label="${esc(v.color)}">
+          <img src="${esc(v.image)}" alt=""><span style="background:#${esc(v.swatch || 'ccc')}"></span></a>`).join('')}</div>` : ''}
       ${sizePicker(p)}
       <div class="custom-box" id="customBox" hidden>
         <b>✂ Custom stitching (+${inr(state.config.customStitchingFee)})</b>
@@ -715,7 +719,7 @@ async function checkoutPage() {
       if (!codOk && payment === 'cod') { payment = 'online'; return refresh(); }
       $('#payOpts').innerHTML = `
         <label class="pay-opt ${payment === 'online' ? 'on' : ''}"><input type="radio" name="payment" value="online" ${payment === 'online' ? 'checked' : ''}>
-          <span><b>UPI / Cards / Netbanking</b><br><span class="small muted">GPay, PhonePe, Paytm, Visa, Mastercard, RuPay</span></span></label>
+          <span><b>UPI / Cards / Netbanking</b>${state.config.paymentProvider === 'demo' ? ' <span class="pill pill-gold">Demo mode</span>' : ''}<br><span class="small muted">GPay, PhonePe, Paytm, Visa, Mastercard, RuPay</span></span></label>
         <label class="pay-opt ${payment === 'cod' ? 'on' : ''} ${codOk ? '' : 'disabled'}"><input type="radio" name="payment" value="cod" ${payment === 'cod' ? 'checked' : ''} ${codOk ? '' : 'disabled'}>
           <span><b>Cash on Delivery</b><br><span class="small muted">${codOk ? `${inr(state.config.codFee)} handling fee applies` : `Not available for this order${q.codAvailable ? ' / pincode' : ` (orders above ${inr(state.config.codMaxOrder)})`}`}</span></span></label>`;
       $$('#payOpts [name=payment]').forEach((r) => r.onchange = () => { payment = r.value; refresh(); });
@@ -790,15 +794,27 @@ async function payPage(num, params) {
     app.innerHTML = `<div class="container">${emptyState('⚠️', 'Order not found', esc(e.message))}</div>`; return;
   }
   if (o.payment_status === 'paid') { navigate(`/order/${num}?t=${t}&new=1`, { replace: true }); return; }
+  const done = () => navigate(`/order/${num}?t=${t}&new=1`, { replace: true });
+  let session;
+  try {
+    session = await api(`/api/orders/${encodeURIComponent(num)}/payment-session`, { method: 'POST', body: { token: t } });
+  } catch (e) {
+    app.innerHTML = `<div class="container">${emptyState('⚠️', 'Could not start payment', esc(e.message), `<button class="btn" onclick="location.reload()">Try again</button>`)}</div>`;
+    return;
+  }
+  if (session.paid) { done(); return; }
+  if (session.provider === 'razorpay') { razorpayCheckout(num, t, o, session, done); return; }
+
   let method = 'upi';
-  app.innerHTML = `<div class="container gateway"><div class="gateway-head"><b>🔒 Secure Checkout</b><span>${inr(o.total)}</span></div>
+  app.innerHTML = `<div class="container gateway"><div class="demo-note">🧪 <b>Demo payment mode</b>: no real money is charged. Real payments switch on once gateway keys are added.</div>
+    <div class="gateway-head"><b>🔒 Secure Checkout</b><span>${inr(o.total)}</span></div>
     <div class="card"><p class="small muted" style="margin-top:0">Paying ${esc(state.config.name)} for order #${esc(o.order_number)}</p>
       <div class="tabs" style="margin-top:0"><button type="button" class="on" data-m="upi">UPI</button><button type="button" data-m="card">Card</button><button type="button" data-m="nb">Netbanking</button></div>
       <div id="payBody" style="padding-top:16px"></div>
       <p class="error" id="payErr"></p>
       <button class="btn btn-block" id="payNow" style="background:#1f3b63;border-color:#1f3b63">Pay ${inr(o.total)}</button>
       <button class="link small" id="payFail" style="display:block;margin:12px auto 0">Simulate a failed payment</button>
-      <p class="small muted center">Demo payment gateway: no real money is charged.</p></div></div>`;
+      <p class="small muted center">Any details work here: this simulates the gateway.</p></div></div>`;
   const bodies = {
     upi: `<div class="upi-apps"><button type="button" class="on">GPay</button><button type="button">PhonePe</button><button type="button">Paytm</button></div>
       <div class="field"><label>Or enter UPI ID</label><input class="input" placeholder="yourname@upi"></div>`,
@@ -820,7 +836,7 @@ async function payPage(num, params) {
     await new Promise((r) => setTimeout(r, 900));
     try {
       const r = await api(`/api/orders/${encodeURIComponent(num)}/pay`, { method: 'POST', body: { token: t, success, method } });
-      if (r.payment_status === 'paid') navigate(`/order/${num}?t=${t}&new=1`, { replace: true });
+      if (r.payment_status === 'paid') done();
       else {
         $('#payErr').textContent = 'Payment failed. No money was deducted. Please try again.';
         $('#payNow').disabled = false;
@@ -830,6 +846,44 @@ async function payPage(num, params) {
   };
   $('#payNow').onclick = () => pay(true);
   $('#payFail').onclick = () => pay(false);
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Could not load the payment window. Check your connection and try again.'));
+    document.head.appendChild(s);
+  });
+}
+
+// Razorpay Standard Checkout; the server verifies the returned signature before marking the order paid.
+async function razorpayCheckout(num, t, o, session, done) {
+  app.innerHTML = `<div class="container gateway"><div class="card center"><h2>Complete your payment</h2>
+    <p class="muted">Order #${esc(o.order_number)} · <b>${inr(o.total)}</b></p><p class="error" id="payErr"></p>
+    <button class="btn btn-block" id="payNow">Pay ${inr(o.total)}</button>
+    <p class="small muted">🔒 Payments are processed securely by Razorpay (UPI, cards, netbanking, wallets).</p></div></div>`;
+  const open = async () => {
+    try {
+      await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+      const rz = new window.Razorpay({
+        ...session.checkout,
+        handler: async (resp) => {
+          try {
+            await api(`/api/orders/${encodeURIComponent(num)}/pay`, { method: 'POST', body: { token: t, ...resp } });
+            done();
+          } catch (e) { $('#payErr').textContent = e.message; }
+        },
+        modal: { ondismiss: () => { $('#payErr').textContent = 'Payment was not completed. You can try again.'; } },
+      });
+      rz.on('payment.failed', (r) => { $('#payErr').textContent = r.error?.description || 'Payment failed. Please try again.'; });
+      rz.open();
+    } catch (e) { $('#payErr').textContent = e.message; }
+  };
+  $('#payNow').onclick = open;
+  open();
 }
 
 const TIMELINE = ['placed', 'confirmed', 'packed', 'shipped', 'out_for_delivery', 'delivered'];
@@ -1299,10 +1353,22 @@ function setupGlobalEvents() {
   };
 }
 
+// Brand name, initials and tagline come from the server config so a rename is a one-line change.
+function applyBrand(config) {
+  const initials = config.name.split(/[\s&]+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
+  $$('[data-store-name]').forEach((el) => { el.textContent = config.name; });
+  $$('[data-store-initial]').forEach((el) => { el.textContent = initials; });
+  $$('[data-store-tagline]').forEach((el) => { el.textContent = config.tagline; });
+  if (config.paymentProvider === 'demo') {
+    $('.announce-track').insertAdjacentHTML('afterbegin', '<span>🧪 Preview store: online payments are in demo mode</span>');
+  }
+}
+
 async function init() {
   $('#year').textContent = new Date().getFullYear();
   const [config, user, categories] = await Promise.all([api('/api/config'), api('/api/auth/me'), api('/api/categories')]);
   Object.assign(state, { config, user, categories });
+  applyBrand(config);
   $('#waFloat').href = `https://wa.me/${config.whatsapp}?text=${encodeURIComponent('Hi! I have a question about a blouse.')}`;
   $('#footerContact').innerHTML = `📞 ${esc(config.phone)}<br>📧 ${esc(config.email)}`;
   if (user) await wishlist.merge().catch(() => {});

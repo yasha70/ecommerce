@@ -54,7 +54,7 @@ test('catalog lists, filters, sorts and searches products', async () => {
   const api = client();
   const all = await api('GET', '/api/products?limit=60');
   assert.equal(all.status, 200);
-  assert.equal(all.data.total, 24);
+  assert.equal(all.data.total, 25);
 
   const silk = await api('GET', '/api/products?category=silk&sort=price_asc');
   assert.ok(silk.data.products.length > 0);
@@ -212,4 +212,71 @@ test('blocks cross-site POSTs', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: JSON.stringify({ email: 'x@y.z' }),
   });
   assert.equal(res.status, 403);
+});
+
+test('colour variants are linked by style code', async () => {
+  const api = client();
+  const list = await api('GET', '/api/products?category=readymade&limit=60');
+  const shimmer = list.data.products.filter((p) => p.styleCode === 'shimmer-stretch');
+  assert.equal(shimmer.length, 4);
+  assert.ok(shimmer.every((p) => p.variantCount === 4 && /^\/images\/products\//.test(p.images[0])));
+  const detail = await api('GET', `/api/products/${shimmer[0].slug}`);
+  assert.deepEqual(detail.data.variants.map((v) => v.color).sort(), ['Bottle Green', 'Gold', 'Rani Pink', 'Red']);
+});
+
+async function placeOnlineOrder(api) {
+  const pid = db.prepare("SELECT id FROM products WHERE style_code = 'shimmer-stretch' LIMIT 1").get().id;
+  const res = await api('POST', '/api/orders', {
+    items: [{ productId: pid, size: inStockSize(pid), qty: 1 }], paymentMethod: 'online', address: ADDRESS, email: 'pay@example.com',
+  });
+  assert.equal(res.status, 201, JSON.stringify(res.data));
+  return res.data;
+}
+
+test('demo payment provider: session, failed then successful payment', async () => {
+  const api = client();
+  assert.equal((await api('GET', '/api/config')).data.paymentProvider, 'demo');
+  const order = await placeOnlineOrder(api);
+  const session = await api('POST', `/api/orders/${order.order_number}/payment-session`, { token: order.token });
+  assert.equal(session.data.provider, 'demo');
+  const failed = await api('POST', `/api/orders/${order.order_number}/pay`, { token: order.token, success: false });
+  assert.equal(failed.data.payment_status, 'failed');
+  const paid = await api('POST', `/api/orders/${order.order_number}/pay`, { token: order.token });
+  assert.equal(paid.data.payment_status, 'paid');
+  assert.match(paid.data.payment_ref, /^demo_/);
+});
+
+test('razorpay provider verifies payment signatures and webhooks', async () => {
+  const { hmac } = require('../src/payments');
+  const api = client();
+  const order = await placeOnlineOrder(api);
+  Object.assign(process.env, { RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: 'secret123', RAZORPAY_WEBHOOK_SECRET: 'whsec' });
+  try {
+    assert.equal((await api('GET', '/api/config')).data.paymentProvider, 'razorpay');
+    db.prepare('UPDATE orders SET gateway_order_id = ? WHERE order_number = ?').run('order_RZ1', order.order_number);
+
+    // Demo-style "success" is not accepted once Razorpay is active.
+    const noSig = await api('POST', `/api/orders/${order.order_number}/pay`, { token: order.token, success: true });
+    assert.equal(noSig.status, 400);
+    const forged = await api('POST', `/api/orders/${order.order_number}/pay`, {
+      token: order.token, razorpay_order_id: 'order_RZ1', razorpay_payment_id: 'pay_1', razorpay_signature: 'bad',
+    });
+    assert.equal(forged.status, 400);
+    const ok = await api('POST', `/api/orders/${order.order_number}/pay`, {
+      token: order.token, razorpay_order_id: 'order_RZ1', razorpay_payment_id: 'pay_1', razorpay_signature: hmac('secret123', 'order_RZ1|pay_1'),
+    });
+    assert.equal(ok.data.payment_status, 'paid');
+    assert.equal(ok.data.payment_ref, 'pay_1');
+
+    // Webhook confirms a second order even if the browser never returns.
+    const order2 = await placeOnlineOrder(api);
+    const body = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_2', order_id: 'order_RZ2', notes: { order_number: order2.order_number } } } } });
+    const bad = await fetch(`${base}/api/payments/razorpay/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': 'nope' }, body });
+    assert.equal(bad.status, 401);
+    const good = await fetch(`${base}/api/payments/razorpay/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': hmac('whsec', body) }, body });
+    assert.equal(good.status, 200);
+    assert.equal(db.prepare('SELECT payment_status FROM orders WHERE order_number = ?').get(order2.order_number).payment_status, 'paid');
+  } finally {
+    for (const k of ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET']) delete process.env[k];
+  }
 });

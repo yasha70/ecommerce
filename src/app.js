@@ -19,7 +19,8 @@ function createApp(db) {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
   });
-  app.use(express.json({ limit: '8mb' }));
+  // Keep the raw body for webhook signature checks.
+  app.use(express.json({ limit: '8mb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
   app.use(sessionMiddleware(db));
 
   // Reject cross-site state-changing requests (CSRF defence for cookie sessions).

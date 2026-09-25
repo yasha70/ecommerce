@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS products (
   occasion TEXT,
   work TEXT,
   color TEXT,
+  swatch TEXT,
+  style_code TEXT,
   price INTEGER NOT NULL,
   mrp INTEGER NOT NULL,
   stock TEXT NOT NULL DEFAULT '{}',
@@ -77,6 +79,7 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_method TEXT NOT NULL,
   payment_status TEXT NOT NULL DEFAULT 'pending',
   payment_ref TEXT,
+  gateway_order_id TEXT,
   status TEXT NOT NULL DEFAULT 'placed',
   history TEXT NOT NULL DEFAULT '[]',
   notes TEXT,
@@ -140,15 +143,33 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
+CREATE INDEX IF NOT EXISTS idx_products_style ON products(style_code);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id);
 `;
 
+// Columns added after the first release; ALTER existing databases so they keep working.
+const ADDED_COLUMNS = [
+  ['products', 'swatch', 'TEXT'],
+  ['products', 'style_code', 'TEXT'],
+  ['orders', 'gateway_order_id', 'TEXT'],
+];
+
+function migrate(db) {
+  for (const [table, column, type] of ADDED_COLUMNS) {
+    const exists = db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table);
+    if (!exists) continue;
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+}
+
 function open(file = config.dbFile) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  migrate(db);
   db.exec(SCHEMA);
   return db;
 }

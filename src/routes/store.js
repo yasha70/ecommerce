@@ -3,7 +3,8 @@ const crypto = require('node:crypto');
 const express = require('express');
 const config = require('../config');
 const { tx } = require('../db');
-const { quote, QuoteError, parseProduct, CUSTOM } = require('../pricing');
+const { quote, QuoteError, parseProduct, CUSTOM, MEASUREMENT_FIELDS } = require('../pricing');
+const payments = require('../payments');
 const {
   hashPassword, verifyPassword, setSession, clearSession, requireUser, rateLimit,
 } = require('../auth');
@@ -142,7 +143,9 @@ function listProducts(db, q) {
   const limit = Math.max(1, Math.min(60, Number(q.limit) || 12));
   const page = Math.max(1, Number(q.page) || 1);
   const order = SORTS[q.sort] || SORTS.popular;
-  const rows = db.prepare(`SELECT p.*, c.slug AS category_slug, c.name AS category_name ${sql} ORDER BY ${order}, p.id LIMIT ? OFFSET ?`)
+  const rows = db.prepare(`SELECT p.*, c.slug AS category_slug, c.name AS category_name,
+    (SELECT COUNT(*) FROM products v WHERE v.style_code = p.style_code AND v.active = 1) AS variant_count
+    ${sql} ORDER BY ${order}, p.id LIMIT ? OFFSET ?`)
     .all(...params, limit, (page - 1) * limit);
   return { products: rows.map(summary), total, page, pages: Math.max(1, Math.ceil(total / limit)), limit };
 }
@@ -153,6 +156,7 @@ function summary(row) {
   return {
     id: p.id, slug: p.slug, name: p.name, price: p.price, mrp: p.mrp, images: p.images,
     category: p.category_name, categorySlug: p.category_slug, fabric: p.fabric, color: p.color,
+    swatch: p.swatch, styleCode: p.style_code, variantCount: p.variant_count || 1,
     rating: p.rating_avg, ratingCount: p.rating_count, isNew: !!p.is_new, featured: !!p.featured,
     inStock: inStock || !!p.custom_stitching, customStitching: !!p.custom_stitching,
     sizesInStock: Object.keys(p.stock).filter((s) => p.stock[s] > 0),
@@ -166,7 +170,7 @@ module.exports = function storeRoutes(db) {
 
   // ---------- Store info ----------
   r.get('/config', (_req, res) => {
-    res.json({ ...config.store, measurementFields: require('../pricing').MEASUREMENT_FIELDS });
+    res.json({ ...config.store, measurementFields: MEASUREMENT_FIELDS, paymentProvider: payments.providerName() });
   });
 
   r.get('/categories', (_req, res) => {
@@ -213,9 +217,13 @@ module.exports = function storeRoutes(db) {
       ORDER BY (p.category_id = ?) DESC, p.sold_count DESC LIMIT 8`).all(p.id, p.category_id, p.occasion, p.category_id).map(summary);
     const inWishlist = req.user ? !!db.prepare('SELECT 1 FROM wishlist WHERE user_id = ? AND product_id = ?').get(req.user.id, p.id) : false;
     const myReview = req.user ? reviews.find((x) => x.user_id === req.user.id) || null : null;
+    const variants = p.style_code
+      ? db.prepare('SELECT slug, color, swatch, images, stock FROM products WHERE style_code = ? AND active = 1 ORDER BY id').all(p.style_code)
+        .map((v) => ({ slug: v.slug, color: v.color, swatch: v.swatch, image: JSON.parse(v.images)[0], inStock: Object.values(JSON.parse(v.stock)).some((n) => n > 0) }))
+      : [];
     res.json({
       ...summary(row), description: p.description, sleeve: p.sleeve, neck: p.neck, occasion: p.occasion, work: p.work,
-      stock: p.stock, reviews: reviews.map(({ user_id, ...rest }) => rest), breakdown, related, inWishlist, myReview: !!myReview,
+      stock: p.stock, reviews: reviews.map(({ user_id, ...rest }) => rest), breakdown, related, inWishlist, myReview: !!myReview, variants,
     });
   });
 
@@ -317,20 +325,51 @@ module.exports = function storeRoutes(db) {
 
   r.get('/orders/:num', loadOrder, (req, res) => res.json(publicOrder(db, req.order)));
 
-  // Simulated payment gateway callback. Swap for Razorpay/Stripe signature verification in production.
+  function payable(o) {
+    if (o.payment_method !== 'online') throw new QuoteError('This order is Cash on Delivery.');
+    if (o.status === 'cancelled') throw new QuoteError('This order was cancelled.');
+  }
+
+  function markPaid(o, ref) {
+    const fresh = db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id);
+    if (fresh.payment_status === 'paid') return;
+    db.prepare("UPDATE orders SET payment_status = 'paid', payment_ref = ?, status = CASE WHEN status = 'placed' THEN 'confirmed' ELSE status END, history = ? WHERE id = ?")
+      .run(ref, fresh.status === 'placed' ? pushHistory(fresh, 'confirmed', 'Payment received') : fresh.history, o.id);
+  }
+
+  // Starts a payment with the active provider (demo or Razorpay).
+  r.post('/orders/:num/payment-session', loadOrder, async (req, res, next) => {
+    try {
+      const o = req.order;
+      payable(o);
+      if (o.payment_status === 'paid') return res.json({ provider: payments.providerName(), paid: true });
+      const session = await payments.provider().createSession(o, config.store);
+      if (session.gatewayOrderId) db.prepare('UPDATE orders SET gateway_order_id = ? WHERE id = ?').run(session.gatewayOrderId, o.id);
+      res.json({ ...session, gatewayOrderId: undefined, total: o.total, orderNumber: o.order_number });
+    } catch (err) { next(err); }
+  });
+
+  // Confirms a payment. Demo mode trusts the simulated gateway; Razorpay verifies the payment signature.
   r.post('/orders/:num/pay', loadOrder, (req, res) => {
     const o = req.order;
-    if (o.payment_method !== 'online') return res.status(400).json({ error: 'This order is Cash on Delivery.' });
-    if (o.payment_status === 'paid') return res.json(publicOrder(db, o));
-    if (o.status === 'cancelled') return res.status(400).json({ error: 'This order was cancelled.' });
-    if (req.body.success === false) {
-      db.prepare("UPDATE orders SET payment_status = 'failed' WHERE id = ?").run(o.id);
-    } else {
-      const ref = `pay_${crypto.randomBytes(8).toString('hex')}`;
-      db.prepare("UPDATE orders SET payment_status = 'paid', payment_ref = ?, status = 'confirmed', history = ? WHERE id = ?")
-        .run(ref, pushHistory(o, 'confirmed', 'Payment received'), o.id);
+    payable(o);
+    if (o.payment_status !== 'paid') {
+      const result = payments.provider().verify(o, req.body);
+      if (result.ok) markPaid(o, result.ref);
+      else db.prepare("UPDATE orders SET payment_status = 'failed' WHERE id = ?").run(o.id);
     }
     res.json(publicOrder(db, db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id)));
+  });
+
+  // Razorpay server-to-server confirmation (Dashboard → Webhooks → payment.captured).
+  r.post('/payments/razorpay/webhook', (req, res) => {
+    const evt = payments.razorpay.parseWebhook(req.rawBody || '', req.headers['x-razorpay-signature']);
+    if (evt) {
+      const o = db.prepare('SELECT * FROM orders WHERE order_number = ? OR (gateway_order_id IS NOT NULL AND gateway_order_id = ?)')
+        .get(evt.orderNumber || '', evt.gatewayOrderId || '');
+      if (o && o.payment_method === 'online') markPaid(o, evt.ref);
+    }
+    res.json({ ok: true });
   });
 
   r.post('/orders/:num/cancel', loadOrder, (req, res) => {

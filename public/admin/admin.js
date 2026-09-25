@@ -5,6 +5,7 @@ const root = $('#root');
 const ORDER_STATUSES = ['placed', 'confirmed', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'return_requested', 'returned'];
 const PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refund_initiated', 'refunded'];
 let config;
+const initials = (name) => name.split(/[\s&]+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
 let user;
 
 const pillFor = (s) => (['delivered', 'paid', 'returned', 'refunded'].includes(s) ? 'pill-green'
@@ -23,7 +24,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal
 
 function loginScreen(msg = '') {
   root.innerHTML = `<div class="login-wrap"><div class="card" style="width:min(400px,100%)">
-    <div class="logo" style="margin-bottom:20px"><span class="logo-mark">S&amp;S</span><span class="logo-text">Admin<small>Silk &amp; Stitch</small></span></div>
+    <div class="logo" style="margin-bottom:20px"><span class="logo-mark">${esc(initials(config.name))}</span><span class="logo-text">Admin<small>${esc(config.name)}</small></span></div>
     <form id="loginForm"><div class="field"><label>Email</label><input name="email" type="email" required autocomplete="username"></div>
     <div class="field"><label>Password</label><input name="password" type="password" required autocomplete="current-password"></div>
     <p class="error" id="err">${esc(msg)}</p><button class="btn btn-block">Log in</button></form>
@@ -46,9 +47,10 @@ const SECTIONS = [
 
 function shell() {
   root.innerHTML = `<div class="admin"><nav class="side">
-    <a href="/" class="logo" style="display:flex"><span class="logo-mark">S&amp;S</span><span class="logo-text" style="color:#fff">Admin<small>Silk &amp; Stitch</small></span></a>
+    <a href="/" class="logo" style="display:flex"><span class="logo-mark">${esc(initials(config.name))}</span><span class="logo-text" style="color:#fff">Admin<small>${esc(config.name)}</small></span></a>
     ${SECTIONS.map(([k, l]) => `<a href="#${k}" data-sec="${k}">${l}<span class="badge" id="badge-${k}" hidden></span></a>`).join('')}
-    <hr><a href="/admin/order-tools" target="_blank" rel="noopener">🧮 Order Tools ↗</a><a href="/" target="_blank" rel="noopener">🛍 View store ↗</a><a href="#" id="logout">↩ Log out</a></nav>
+    <hr><div class="small" style="padding:6px 12px;color:#cdbfb5">Payments: <b style="color:${config.paymentProvider === 'demo' ? 'var(--gold-light)' : '#8fd19e'}">${config.paymentProvider === 'demo' ? 'Demo mode' : 'Razorpay live'}</b></div>
+    <a href="/admin/order-tools" target="_blank" rel="noopener">🧮 Order Tools ↗</a><a href="/" target="_blank" rel="noopener">🛍 View store ↗</a><a href="#" id="logout">↩ Log out</a></nav>
     <main class="content" id="content"></main></div>`;
   $('#logout').onclick = async (e) => { e.preventDefault(); await api('/api/auth/logout', { method: 'POST' }); loginScreen(); };
   window.onhashchange = route;
@@ -220,7 +222,9 @@ async function productForm(el, id, cats) {
     <div class="row-3"><div class="field"><label>Sleeve</label><select name="sleeve">${opt(['Sleeveless', 'Cap Sleeve', 'Short Sleeve', 'Elbow Sleeve', 'Full Sleeve', 'Puff Sleeve'], p.sleeve)}</select></div>
       <div class="field"><label>Neckline</label><select name="neck">${opt(['Round Neck', 'V Neck', 'Boat Neck', 'Sweetheart Neck', 'High Neck', 'Square Neck'], p.neck)}</select></div>
       <div class="field"><label>Occasion</label><select name="occasion">${opt(['Festive', 'Wedding', 'Party', 'Office', 'Casual'], p.occasion)}</select></div></div>
-    <div class="row"><div class="field"><label>Work / embellishment</label><input name="work" value="${esc(p.work || '')}"></div><div class="field"><label>Colour</label><input name="color" value="${esc(p.color || '')}"></div></div>
+    <div class="row"><div class="field"><label>Work / embellishment</label><input name="work" value="${esc(p.work || '')}"></div><div class="field"><label>Colour name</label><input name="color" value="${esc(p.color || '')}"></div></div>
+    <div class="row"><div class="field"><label>Colour swatch</label><input type="color" name="swatch" value="#${esc(p.swatch || 'cccccc')}"></div>
+      <div class="field"><label>Style code (links colour variants)</label><input name="style_code" value="${esc(p.style_code || '')}" placeholder="e.g. shimmer-stretch"><span class="small muted">Give every colour of the same design the same code to show colour swatches.</span></div></div>
     <div class="field"><label>Search tags</label><input name="tags" value="${esc(p.tags || '')}" placeholder="silk zari maroon wedding"></div>
     <h3>Stock by size</h3><div class="stock-grid">${config.sizes.map((s) => `<div class="field"><label>${s}</label><input type="number" min="0" name="stock_${s}" value="${p.stock[s] ?? 0}"></div>`).join('')}</div>
   </div><div>
@@ -367,6 +371,7 @@ async function subscribers(el) {
 
 (async () => {
   config = await api('/api/config');
+  document.title = `Admin · ${config.name}`;
   user = await api('/api/auth/me');
   if (!user || user.role !== 'admin') loginScreen(user ? 'This account does not have admin access.' : '');
   else shell();

@@ -37,9 +37,38 @@ const PRODUCTS = [
   ['Sequin Cocktail Blouse', 'party', 'Georgette', 'sleeveless', 'v', 'Party', 'Sequin', 'Silver', '8a8d93', 'ffffff', 'dots', 1299, 1899, 'featured'],
   ['Midnight Velvet Party Blouse', 'party', 'Velvet', 'long', 'square', 'Party', 'Plain', 'Navy', '16244a', 'c0c6d6', 'plain', 1199, 1699, ''],
   ['Metallic Halter-Style Blouse', 'party', 'Lycra', 'sleeveless', 'high', 'Party', 'Foil', 'Gold', 'b8923a', '2b2b2b', 'stripes', 999, 1499, 'new'],
-  ['Black Stretch Readymade Blouse', 'readymade', 'Lycra Cotton', 'short', 'round', 'Casual', 'Plain', 'Black', '1b1b1b', '444444', 'plain', 349, 599, 'featured'],
-  ['Beige Stretch Readymade Blouse', 'readymade', 'Lycra Cotton', 'elbow', 'round', 'Office', 'Plain', 'Beige', 'd8c3a5', 'a88c63', 'plain', 349, 599, ''],
-  ['Red Stretch Readymade Blouse', 'readymade', 'Lycra Cotton', 'short', 'v', 'Festive', 'Plain', 'Red', 'c0272d', '7a1f2b', 'plain', 349, 599, ''],
+];
+
+// Photographed catalogue: one style in several colours, linked by style_code so shoppers can switch colour.
+// Descriptions and prices are starting points; edit them from the admin panel.
+const PHOTO_STYLES = [{
+  styleCode: 'shimmer-stretch',
+  name: 'Shimmer Jacquard Stretch Blouse',
+  category: 'readymade',
+  fabric: 'Stretch Jacquard',
+  sleeve: 'Elbow Sleeve',
+  neck: 'Round Neck',
+  occasion: 'Festive',
+  work: 'Foil Jacquard',
+  price: 499,
+  mrp: 999,
+  description: 'A ready-to-wear stretch blouse woven with a shimmering foil jacquard dot pattern. '
+    + 'Scoop round neck with a scalloped trim, elbow-length sleeves and princess-cut seams for a smooth, flattering fit. '
+    + 'The stretch fabric moves with you, so there is no waiting for a tailor: just pair it with your favourite saree and go. '
+    + 'Hand wash cold or dry clean.',
+  colours: [
+    ['Bottle Green', '1f5a32', 'shimmer-stretch-bottle-green.webp', 180],
+    ['Gold', 'c9a36a', 'shimmer-stretch-gold.webp', 165],
+    ['Red', 'c21a1f', 'shimmer-stretch-red.webp', 172],
+    ['Rani Pink', 'd6177a', 'shimmer-stretch-rani-pink.webp', 158],
+  ],
+}];
+
+const STRETCH_REVIEWS = [
+  [5, 'Fits like a dream', 'The stretch is comfortable and the shimmer looks rich in person. Wore it all day at a wedding.'],
+  [5, 'Great for last-minute plans', 'No tailor needed. Matched it with three different sarees already!'],
+  [4, 'Lovely colour', 'Colour is exactly like the photo. Sleeves are a little snug but the fabric stretches.'],
+  [5, 'Value for money', 'Looks much more expensive than it is. Ordering it in another colour.'],
 ];
 
 const SLEEVE_LABEL = { sleeveless: 'Sleeveless', cap: 'Cap Sleeve', short: 'Short Sleeve', elbow: 'Elbow Sleeve', long: 'Full Sleeve', puff: 'Puff Sleeve' };
@@ -81,8 +110,21 @@ function seed(db, { demo = true } = {}) {
     }
 
     const insProd = db.prepare(`INSERT INTO products
-      (slug, name, description, category_id, fabric, sleeve, neck, occasion, work, color, price, mrp, stock, images, tags, featured, is_new, custom_stitching, sold_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      (slug, name, description, category_id, fabric, sleeve, neck, occasion, work, color, price, mrp, stock, images, tags, featured, is_new, custom_stitching, sold_count, swatch, style_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+
+    for (const st of PHOTO_STYLES) {
+      st.colours.forEach(([colour, swatch, file, sold], i) => {
+        const stock = {};
+        config.store.sizes.forEach((s, j) => { stock[s] = 6 + ((i * 3 + j * 5) % 12); });
+        insProd.run(
+          slugify(`${st.name} ${colour}`), `${st.name} – ${colour}`, st.description, catIds[st.category], st.fabric, st.sleeve, st.neck,
+          st.occasion, st.work, colour, st.price, st.mrp, JSON.stringify(stock), JSON.stringify([`/images/products/${file}`]),
+          `${st.fabric} ${st.work} ${colour} ${st.occasion} readymade stretch shimmer`.toLowerCase(), 1, 1, 0, sold, swatch, st.styleCode,
+        );
+      });
+    }
+
     PRODUCTS.forEach((p, i) => {
       const [name, cat, fabric, sleeve, neck, occasion, work, colorName, base, accent, pattern, price, mrp, flags] = p;
       const stock = {};
@@ -95,7 +137,7 @@ function seed(db, { demo = true } = {}) {
         slugify(name), name, description, catIds[cat], fabric, SLEEVE_LABEL[sleeve], NECK_LABEL[neck], occasion, work, colorName,
         price, mrp, JSON.stringify(stock), JSON.stringify(blouseImageSet({ c: base, a: accent, s: sleeve, n: neck, p: pattern })),
         `${fabric} ${work} ${colorName} ${occasion}`.toLowerCase(),
-        flags.includes('featured') ? 1 : 0, flags.includes('new') ? 1 : 0, cat === 'readymade' ? 0 : 1, (i * 37) % 120,
+        flags.includes('featured') ? 1 : 0, flags.includes('new') ? 1 : 0, cat === 'readymade' ? 0 : 1, (i * 37) % 120, base, null,
       );
     });
 
@@ -109,12 +151,14 @@ function seed(db, { demo = true } = {}) {
     const customers = ['Priya Sharma', 'Ananya Iyer', 'Meera Nair', 'Kavya Reddy', 'Sneha Patil'].map((name, i) =>
       Number(insUser.run(name, `${slugify(name.split(' ')[0])}@example.com`, `98${String(10000000 + i * 1234567).slice(0, 8)}`, hashPassword('password123')).lastInsertRowid));
 
-    const insReview = db.prepare('INSERT INTO reviews (product_id, user_id, rating, title, body, verified, created_at) VALUES (?, ?, ?, ?, ?, 1, datetime(\'now\', ?))');
-    const products = db.prepare('SELECT id, name, price, images FROM products').all();
+    // Sample reviews are not marked "verified buyer"; delete them from the admin panel before launch.
+    const insReview = db.prepare('INSERT INTO reviews (product_id, user_id, rating, title, body, verified, created_at) VALUES (?, ?, ?, ?, ?, 0, datetime(\'now\', ?))');
+    const products = db.prepare('SELECT id, name, price, images, style_code FROM products').all();
     products.forEach((p, i) => {
-      const n = 1 + (i % 4);
+      const pool = p.style_code ? STRETCH_REVIEWS : REVIEWS;
+      const n = p.style_code ? 3 + (i % 2) : 1 + (i % 4);
       for (let k = 0; k < n; k++) {
-        const [rating, title, body] = REVIEWS[(i + k) % REVIEWS.length];
+        const [rating, title, body] = pool[(i + k) % pool.length];
         insReview.run(p.id, customers[(i + k) % customers.length], rating, title, body, `-${(i + k * 3) % 40} days`);
       }
     });

@@ -6,18 +6,20 @@ const root = path.resolve(__dirname, '..');
 
 module.exports = {
   port: Number(process.env.PORT) || 3000,
-  dbFile: process.env.DB_FILE || path.join(root, 'data', 'store.db'),
-  uploadDir: process.env.UPLOAD_DIR || path.join(root, 'uploads'),
+  // Vercel functions can only write to /tmp, which is wiped when an instance is recycled.
+  dbFile: process.env.DB_FILE || (process.env.VERCEL ? '/tmp/store.db' : path.join(root, 'data', 'store.db')),
+  uploadDir: process.env.UPLOAD_DIR || (process.env.VERCEL ? '/tmp/uploads' : path.join(root, 'uploads')),
   publicDir: path.join(root, 'public'),
   // Without SESSION_SECRET, sessions are invalidated on every restart.
   sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
   sessionDays: 30,
-  adminEmail: process.env.ADMIN_EMAIL || 'admin@silkandstitch.in',
+  adminEmail: process.env.ADMIN_EMAIL || 'admin@zariya.in',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
   store: {
-    name: 'Silk & Stitch',
-    tagline: 'Designer blouses, stitched to fit',
-    email: 'hello@silkandstitch.in',
+    // Change the brand here (or set STORE_NAME); the site, admin and invoices all read it.
+    name: process.env.STORE_NAME || 'Zariya',
+    tagline: process.env.STORE_TAGLINE || 'Designer Blouses',
+    email: process.env.STORE_EMAIL || 'hello@zariya.in',
     phone: '+91 98765 43210',
     whatsapp: '919876543210',
     address: '12 Weavers Lane, Jayanagar, Bengaluru, Karnataka 560041',
