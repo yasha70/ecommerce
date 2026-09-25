@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin · Silk &amp; Stitch</title>
+  <link rel="icon" href="/img/blouse.svg?c=1d1715&a=d9b35b&s=short&n=round&p=zari">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+  <style>
+    body { background: #f5f2ec; }
+    .admin { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+    .side { background: #1d1715; color: #efe6dc; padding: 22px 14px; position: sticky; top: 0; height: 100vh; overflow: auto; }
+    .side .logo { margin: 0 6px 26px; }
+    .side a { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 8px; color: #cdbfb5; font-weight: 500; font-size: 14.5px; margin-bottom: 2px; }
+    .side a:hover { background: #2e2522; color: #fff; }
+    .side a.on { background: var(--gold); color: #1d1715; }
+    .side .badge { position: static; }
+    .side hr { border: 0; border-top: 1px solid #3a302c; margin: 14px 0; }
+    .content { padding: 28px 32px 60px; min-width: 0; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+    .top h1 { margin: 0; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .kpi { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+    .kpi span { font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .kpi b { display: block; font-size: 26px; font-family: var(--serif); margin-top: 4px; }
+    .two { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; margin-bottom: 18px; }
+    .table-wrap { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+    .table { font-size: 13.5px; }
+    .table th, .table td { border: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    .table tr:hover td { background: #fcfaf6; }
+    .table img { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; }
+    .filters-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .filters-row .input { width: auto; }
+    .chart { display: flex; align-items: flex-end; gap: 4px; height: 180px; padding-top: 10px; }
+    .chart div { flex: 1; background: var(--maroon); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+    .chart div:hover { background: var(--gold); }
+    .chart div:hover::after { content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; font-size: 11px; padding: 4px 8px; border-radius: 4px; white-space: nowrap; margin-bottom: 4px; z-index: 2; }
+    .hbar { display: flex; align-items: center; gap: 10px; font-size: 13px; margin: 8px 0; }
+    .hbar .bar { height: 10px; }
+    .stock-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .stock-grid .field { margin: 0; }
+    .img-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .img-list div { position: relative; }
+    .img-list img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+    .img-list button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--red); color: #fff; cursor: pointer; font-size: 12px; }
+    .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+    @media (max-width: 900px) {
+      .admin { grid-template-columns: 1fr; }
+      .side { position: static; height: auto; display: flex; gap: 4px; overflow-x: auto; padding: 12px; }
+      .side .logo, .side hr { display: none; }
+      .side a { white-space: nowrap; }
+      .content { padding: 20px 16px 50px; }
+      .two { grid-template-columns: 1fr; }
+      .stock-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"><div class="spinner"></div></div>
+  <div class="modal" id="modal" hidden role="dialog" aria-modal="true">
+    <div class="modal-box"><button class="icon-btn modal-close" id="modalClose" aria-label="Close">✕</button><div id="modalBody"></div></div>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script src="/admin/admin.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Silk &amp; Stitch · Designer Blouses Online</title>
+  <meta name="description" content="Shop designer silk, embroidered, bridal, cotton and readymade blouses. Custom stitching to your measurements, free shipping over ₹999, easy 7-day returns and Cash on Delivery.">
+  <meta name="theme-color" content="#7a1f2b">
+  <meta property="og:title" content="Silk & Stitch · Designer Blouses Online">
+  <meta property="og:description" content="Designer blouses, stitched to fit. Free shipping over ₹999.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/img/blouse.svg?c=7a1f2b&a=d9b35b&s=short&n=sweetheart&p=zari">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#app">Skip to content</a>
+  <div class="announce" id="announce">
+    <div class="announce-track">
+      <span>Free shipping on orders above ₹999</span>
+      <span>Custom stitching to your measurements · ₹250</span>
+      <span>Use <b>FESTIVE20</b> for 20% off above ₹1,999</span>
+      <span>Easy 7-day returns · Cash on Delivery available</span>
+    </div>
+  </div>
+
+  <header class="site-header" id="siteHeader">
+    <div class="header-inner container">
+      <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <a href="/" class="logo" data-link>
+        <span class="logo-mark">S&amp;S</span>
+        <span class="logo-text">Silk &amp; Stitch<small>Designer Blouses</small></span>
+      </a>
+      <nav class="main-nav" id="mainNav" aria-label="Main">
+        <a href="/shop" data-link>Shop All</a>
+        <a href="/shop?new=1" data-link>New Arrivals</a>
+        <div class="nav-dd">
+          <a href="/shop" data-link class="dd-trigger">Collections ▾</a>
+          <div class="dd-menu" id="navCategories"></div>
+        </div>
+        <a href="/shop?sale=1" data-link class="nav-sale">Sale</a>
+        <a href="/size-guide" data-link>Size Guide</a>
+        <a href="/track" data-link>Track Order</a>
+      </nav>
+      <div class="search" id="searchBox">
+        <form id="searchForm" role="search">
+          <input type="search" id="searchInput" placeholder="Search silk, mirror work, bridal…" autocomplete="off" aria-label="Search products">
+          <button type="submit" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+        </form>
+        <div class="suggest" id="suggest" hidden></div>
+      </div>
+      <div class="header-icons">
+        <button class="icon-btn search-toggle" id="searchToggle" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+        <a href="/account" data-link class="icon-btn" id="accountLink" aria-label="Account"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></a>
+        <a href="/wishlist" data-link class="icon-btn" aria-label="Wishlist"><svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.5-9.3C1 8 3.4 4.5 7 4.5c2 0 3.5 1.1 5 3 1.5-1.9 3-3 5-3 3.6 0 6 3.5 4.5 7.2C19.5 16.4 12 21 12 21z"/></svg><span class="badge" id="wishCount" hidden>0</span></a>
+        <button class="icon-btn" id="cartBtn" aria-label="Cart"><svg viewBox="0 0 24 24"><path d="M5 7h14l-1.2 12.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9L5 7z"/><path d="M9 7V6a3 3 0 0 1 6 0v1"/></svg><span class="badge" id="cartCount" hidden>0</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>
+        <div class="logo logo-light"><span class="logo-mark">S&amp;S</span><span class="logo-text">Silk &amp; Stitch<small>Designer Blouses</small></span></div>
+        <p class="muted-light">Handcrafted blouses from weavers and karigars across India, stitched to fit you perfectly.</p>
+        <p class="muted-light" id="footerContact"></p>
+      </div>
+      <div>
+        <h4>Shop</h4>
+        <ul id="footerCategories"></ul>
+      </div>
+      <div>
+        <h4>Help</h4>
+        <ul>
+          <li><a href="/track" data-link>Track your order</a></li>
+          <li><a href="/shipping-returns" data-link>Shipping &amp; Returns</a></li>
+          <li><a href="/size-guide" data-link>Size &amp; Measurement Guide</a></li>
+          <li><a href="/faq" data-link>FAQs</a></li>
+          <li><a href="/contact" data-link>Contact us</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Join the list</h4>
+        <p class="muted-light">New drops, festive offers and styling tips. No spam.</p>
+        <form class="newsletter" id="newsletterForm">
+          <input type="email" name="email" placeholder="Your email" required aria-label="Email">
+          <button class="btn btn-gold" type="submit">Subscribe</button>
+        </form>
+        <div class="pay-badges"><span>UPI</span><span>Visa</span><span>Mastercard</span><span>RuPay</span><span>COD</span></div>
+      </div>
+    </div>
+    <div class="container footer-bottom">
+      <span>© <span id="year"></span> Silk &amp; Stitch. All rights reserved.</span>
+      <span><a href="/about" data-link>About</a> · <a href="/privacy" data-link>Privacy</a> · <a href="/terms" data-link>Terms</a></span>
+    </div>
+  </footer>
+
+  <!-- Cart drawer -->
+  <div class="overlay" id="overlay" hidden></div>
+  <aside class="drawer" id="cartDrawer" aria-label="Shopping cart" aria-hidden="true">
+    <div class="drawer-head"><h3>Your Bag</h3><button class="icon-btn" data-close-drawer aria-label="Close">✕</button></div>
+    <div class="drawer-body" id="drawerBody"></div>
+    <div class="drawer-foot" id="drawerFoot"></div>
+  </aside>
+
+  <!-- Mobile nav -->
+  <aside class="drawer drawer-left" id="mobileNav" aria-label="Menu" aria-hidden="true">
+    <div class="drawer-head"><h3>Menu</h3><button class="icon-btn" data-close-drawer aria-label="Close">✕</button></div>
+    <div class="drawer-body mobile-links" id="mobileLinks"></div>
+  </aside>
+
+  <div class="modal" id="modal" hidden role="dialog" aria-modal="true">
+    <div class="modal-box"><button class="icon-btn modal-close" id="modalClose" aria-label="Close">✕</button><div id="modalBody"></div></div>
+  </div>
+
+  <div class="compare-bar" id="compareBar" hidden></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <a class="wa-float" id="waFloat" target="_blank" rel="noopener" aria-label="Chat on WhatsApp">
+    <svg viewBox="0 0 32 32"><path fill="#fff" d="M16 3a13 13 0 0 0-11.2 19.6L3 29l6.6-1.7A13 13 0 1 0 16 3zm0 23.7c-2 0-4-.6-5.7-1.6l-.4-.2-3.9 1 1-3.8-.3-.4A10.7 10.7 0 1 1 16 26.7zm5.9-8c-.3-.2-1.9-1-2.2-1s-.5-.2-.7.2-.8 1-1 1.2-.4.2-.7 0a8.8 8.8 0 0 1-4.4-3.8c-.3-.6.3-.5 1-1.7.1-.2 0-.4 0-.5l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.9.4 3.6 3.6 0 0 0-1.1 2.7 6.3 6.3 0 0 0 1.3 3.3 14.4 14.4 0 0 0 5.5 4.9c2 .9 2.9 1 3.9.8a3.3 3.3 0 0 0 2.2-1.5 2.7 2.7 0 0 0 .2-1.5c-.1-.2-.3-.3-.6-.4z"/></svg>
+  </a>
+  <button class="to-top" id="toTop" aria-label="Back to top" hidden>↑</button>
+
+  <script src="/js/app.js" type="module"></script>
+</body>
+</html>
