@@ -21,9 +21,10 @@ const cart = {
   save() {
     store.set('cart', state.cart);
     const n = state.cart.reduce((t, i) => t + i.qty, 0);
-    const badge = $('#cartCount');
-    badge.textContent = n;
-    badge.hidden = n === 0;
+    for (const badge of [$('#cartCount'), $('#bottomCartCount')]) {
+      badge.textContent = n;
+      badge.hidden = n === 0;
+    }
   },
   add(product, size, qty = 1, measurements = null) {
     const custom = size === 'Custom';
@@ -122,34 +123,23 @@ function rememberViewed(id) {
 /* ------------------------------------------------------------------ */
 
 const HEART = '<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.5-9.3C1 8 3.4 4.5 7 4.5c2 0 3.5 1.1 5 3 1.5-1.9 3-3 5-3 3.6 0 6 3.5 4.5 7.2C19.5 16.4 12 21 12 21z"/></svg>';
-const EYE = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
-const SCALE = '<svg viewBox="0 0 24 24"><path d="M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0L5 7zm14 0-3 7a3 3 0 0 0 6 0l-3-7z"/></svg>';
 
 function productCard(p) {
   const off = discount(p.price, p.mrp);
-  const onCompare = state.compare.some((c) => c.id === p.id);
+  const badge = !p.inStock ? '<span class="tag tag-oos">Sold out</span>' : p.isNew ? '<span class="tag tag-new">New</span>' : '';
   return `<article class="p-card">
     <a href="/product/${esc(p.slug)}" data-link class="p-img" aria-label="${esc(p.name)}">
       <img src="${esc(p.images[0])}" alt="${esc(p.name)}" loading="lazy">
       ${p.images[1] ? `<img class="alt" src="${esc(p.images[1])}" alt="" loading="lazy">` : ''}
+      ${p.ratingCount ? `<span class="p-rating">${p.rating} <i>★</i> <span>| ${p.ratingCount}</span></span>` : ''}
     </a>
-    <div class="p-tags">
-      ${p.isNew ? '<span class="tag tag-new">NEW</span>' : ''}
-      ${off >= 10 ? `<span class="tag tag-off">${off}% OFF</span>` : ''}
-      ${!p.inStock ? '<span class="tag tag-oos">SOLD OUT</span>' : ''}
-    </div>
-    <div class="p-actions">
-      <button class="round-btn ${wishlist.has(p.id) ? 'on' : ''}" data-wish="${p.id}" aria-label="Add to wishlist" title="Wishlist">${HEART}</button>
-      <button class="round-btn" data-quick="${esc(p.slug)}" aria-label="Quick view" title="Quick view">${EYE}</button>
-      <button class="round-btn ${onCompare ? 'on' : ''}" data-compare="${p.id}" data-compare-json='${esc(JSON.stringify({ id: p.id, name: p.name, images: p.images }))}' aria-label="Compare" title="Compare">${SCALE}</button>
-    </div>
+    <div class="p-tags">${badge}</div>
+    <button class="p-heart ${wishlist.has(p.id) ? 'on' : ''}" data-wish="${p.id}" aria-label="Add to wishlist" title="Wishlist">${HEART}</button>
     <div class="p-quick"><button class="btn btn-sm btn-block" data-quick="${esc(p.slug)}">Quick add</button></div>
     <a href="/product/${esc(p.slug)}" data-link class="p-body">
-      <span class="p-cat">${esc(p.category || '')}</span>
       <span class="p-name">${esc(p.name)}</span>
-      ${p.variantCount > 1 ? `<span class="p-colours"><i style="background:#${esc(p.swatch || 'ccc')}"></i>${p.variantCount} colours</span>` : ''}
-      ${p.ratingCount ? `<span class="rating-line"><span class="rating-chip">${p.rating} ★</span>(${p.ratingCount})</span>` : ''}
-      <span class="price"><b>${inr(p.price)}</b>${p.mrp > p.price ? `<s>${inr(p.mrp)}</s><span class="off">${off}% off</span>` : ''}</span>
+      <span class="price"><b>${inr(p.price)}</b>${p.mrp > p.price ? `<s>${inr(p.mrp)}</s><span class="off">${off}% OFF</span>` : ''}</span>
+      ${p.variantCount > 1 ? `<span class="p-colours"><i style="background:#${esc(p.swatch || 'ccc')}"></i>+${p.variantCount - 1} more colour${p.variantCount > 2 ? 's' : ''}</span>` : ''}
     </a>
   </article>`;
 }
@@ -269,65 +259,141 @@ function wireSizePicker(root, _p, onChange) {
 /* Pages                                                               */
 /* ------------------------------------------------------------------ */
 
+const ICON = {
+  truck: '<svg viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>',
+  scissors: '<svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>',
+  returns: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+  cash: '<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
+  shield: '<svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>',
+  tag: '<svg viewBox="0 0 24 24"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
+  sparkle: '<svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg>',
+};
+
+// Approximate swatch colours for the "Shop by colour" row; unknown names fall back to a neutral.
+const COLOUR_HEX = {
+  red: 'c21a1f', maroon: '7a1f2b', wine: '5a1a2a', pink: 'e8b4bc', 'rani pink': 'd6177a', green: '1f6b4f', 'bottle green': '1f5a32',
+  gold: 'c9a36a', mustard: 'c9962b', black: '1d1d1d', ivory: 'efe4cf', beige: 'd8c3a5', blue: '1b5e7a', navy: '16244a', indigo: '23345c',
+  purple: '8e6bb5', silver: 'a9adb3', rust: 'a6432f', white: 'ffffff',
+};
+
+const SLIDES = [
+  { img: 'shimmer-stretch-bottle-green', slug: 'shimmer-jacquard-stretch-blouse-bottle-green', eyebrow: 'New arrival', title: 'The Shimmer<br>Stretch Edit', text: 'Ready-to-wear jacquard blouses that stretch to fit. No tailor, no waiting.', cta: 'Shop now', href: '/shop?category=readymade' },
+  { img: 'shimmer-stretch-red', slug: 'shimmer-jacquard-stretch-blouse-red', eyebrow: 'Festive favourite', title: 'Red that<br>steals the show', text: 'A shimmering foil weave made for pujas, sangeets and every celebration.', cta: 'Shop red', href: '/product/shimmer-jacquard-stretch-blouse-red' },
+  { img: 'shimmer-stretch-gold', slug: 'shimmer-jacquard-stretch-blouse-gold', eyebrow: 'Pairs with everything', title: 'Gold goes<br>with every saree', text: 'The one blouse your wardrobe is missing. Now at 50% off.', cta: 'Shop gold', href: '/product/shimmer-jacquard-stretch-blouse-gold' },
+  { img: 'shimmer-stretch-rani-pink', slug: 'shimmer-jacquard-stretch-blouse-rani-pink', eyebrow: 'Just dropped', title: 'Rani Pink,<br>made to move', text: 'Soft stretch, princess seams and elbow sleeves for all-day comfort.', cta: 'Shop pink', href: '/product/shimmer-jacquard-stretch-blouse-rani-pink' },
+];
+
+let slideTimer = null;
+
+function heroSlider() {
+  return `<section class="slider" id="slider" aria-roledescription="carousel" aria-label="Featured">
+    <div class="slides">${SLIDES.map((s, i) => `<div class="slide ${i ? '' : 'on'}" role="group" aria-roledescription="slide" aria-label="${i + 1} of ${SLIDES.length}">
+      <div class="container slide-inner">
+        <div class="slide-copy"><div class="eyebrow">${s.eyebrow}</div><h1>${s.title}</h1><p>${s.text}</p>
+          <div class="hero-ctas"><a class="btn" href="${s.href}" data-link>${s.cta}</a><a class="btn btn-ghost" href="/shop" data-link>All blouses</a></div></div>
+        <a class="slide-img" href="/product/${s.slug}" data-link><img src="/images/products/${s.img}.webp" alt="" ${i ? 'loading="lazy"' : 'fetchpriority="high"'}></a>
+      </div></div>`).join('')}</div>
+    <button class="slide-arrow prev" aria-label="Previous slide">‹</button><button class="slide-arrow next" aria-label="Next slide">›</button>
+    <div class="slide-dots">${SLIDES.map((_, i) => `<button class="${i ? '' : 'on'}" data-slide="${i}" aria-label="Go to slide ${i + 1}"></button>`).join('')}</div>
+  </section>`;
+}
+
+function wireSlider() {
+  const root = $('#slider');
+  if (!root) return;
+  const slides = $$('.slide', root);
+  const dots = $$('.slide-dots button', root);
+  let i = 0;
+  const go = (n) => {
+    i = (n + slides.length) % slides.length;
+    slides.forEach((s, k) => s.classList.toggle('on', k === i));
+    dots.forEach((d, k) => d.classList.toggle('on', k === i));
+  };
+  const restart = () => {
+    clearInterval(slideTimer);
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) slideTimer = setInterval(() => { if (!document.getElementById('slider')) clearInterval(slideTimer); else go(i + 1); }, 5500);
+  };
+  $('.prev', root).onclick = () => { go(i - 1); restart(); };
+  $('.next', root).onclick = () => { go(i + 1); restart(); };
+  dots.forEach((d) => d.onclick = () => { go(Number(d.dataset.slide)); restart(); });
+  let x0 = null;
+  root.addEventListener('pointerdown', (e) => { x0 = e.clientX; });
+  root.addEventListener('pointerup', (e) => {
+    if (x0 !== null && Math.abs(e.clientX - x0) > 50) { go(i + (e.clientX < x0 ? 1 : -1)); restart(); }
+    x0 = null;
+  });
+  restart();
+}
+
+function productTabs() {
+  return `<section class="section"><div class="container">
+    <div class="section-head center-head"><div><div class="eyebrow">Trending now</div><h2>Most loved blouses</h2></div></div>
+    <div class="rail-tabs" role="tablist"><button class="on" data-rail="sort=popular">Bestsellers</button><button data-rail="new=1&sort=new">New arrivals</button><button data-rail="sale=1&sort=discount">On sale</button></div>
+    <div id="rail">${skeletonGrid(8)}</div>
+    <div class="center" style="margin-top:28px"><a class="btn btn-ghost" id="railAll" href="/shop?sort=popular" data-link>View all</a></div>
+  </div></section>`;
+}
+
+async function loadRail(query) {
+  $$('.rail-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.rail === query));
+  $('#railAll').setAttribute('href', `/shop?${query}`);
+  const { products } = await api(`/api/products?${query}&limit=8`);
+  const el = $('#rail');
+  if (el) el.innerHTML = `<div class="grid">${products.map(productCard).join('')}</div>`;
+}
+
 async function homePage() {
   setTitle('');
-  const hero = [['shimmer-jacquard-stretch-blouse-bottle-green', 'shimmer-stretch-bottle-green', 'Bottle green'], ['shimmer-jacquard-stretch-blouse-red', 'shimmer-stretch-red', 'Red']];
-  app.innerHTML = `
-  <section class="hero"><div class="container hero-inner">
-    <div><div class="eyebrow" style="color:var(--gold-light)">New · The Shimmer Stretch Edit</div>
-      <h1>Blouses that make <em>the saree</em> sing.</h1>
-      <p>Ready-to-wear shimmer jacquard blouses that stretch to fit, in four festive colours. Plus silk, designer and bridal blouses, custom stitched to your measurements.</p>
-      <div class="hero-ctas"><a class="btn btn-gold" href="/shop?category=readymade" data-link>Shop the Stretch Edit</a><a class="btn btn-outline" href="/shop" data-link>All blouses</a></div>
-      <div class="hero-stats"><div><b>${inr(499)}</b><span>Starting price</span></div><div><b>32–44</b><span>Sizes in stock</span></div><div><b>${state.config.returnDays}-day</b><span>Easy returns</span></div></div>
-    </div>
-    <div class="hero-art">${hero.map(([slug, file, label]) => `<a href="/product/${slug}" data-link><img src="/images/products/${file}.webp" alt="${label} shimmer jacquard stretch blouse"></a>`).join('')}</div>
-  </div></section>
+  const c = state.config;
+  app.innerHTML = `${heroSlider()}
   <section class="usp"><div class="container usp-grid">
-    <div class="usp-item"><span class="ic">🚚</span><div><b>Free shipping</b><span class="muted small">On orders over ${inr(state.config.freeShippingOver)}</span></div></div>
-    <div class="usp-item"><span class="ic">✂️</span><div><b>Custom stitching</b><span class="muted small">Made to your measurements</span></div></div>
-    <div class="usp-item"><span class="ic">↩️</span><div><b>${state.config.returnDays}-day returns</b><span class="muted small">Hassle-free pickups</span></div></div>
-    <div class="usp-item"><span class="ic">💵</span><div><b>Cash on Delivery</b><span class="muted small">Pay when it arrives</span></div></div>
+    <div class="usp-item"><span class="ic">${ICON.truck}</span><div><b>Free shipping</b><span>On orders over ${inr(c.freeShippingOver)}</span></div></div>
+    <div class="usp-item"><span class="ic">${ICON.cash}</span><div><b>Cash on Delivery</b><span>Pay when it arrives</span></div></div>
+    <div class="usp-item"><span class="ic">${ICON.returns}</span><div><b>${c.returnDays}-day easy returns</b><span>Hassle-free pickups</span></div></div>
+    <div class="usp-item"><span class="ic">${ICON.shield}</span><div><b>Secure payments</b><span>UPI · Cards · Netbanking</span></div></div>
   </div></section>
   <section class="section"><div class="container">
-    <div class="section-head"><div><div class="eyebrow">Collections</div><h2>Shop by category</h2></div></div>
-    <div class="cat-grid">${state.categories.map((c) => `<a class="cat-tile" href="/shop?category=${esc(c.slug)}" data-link>
-      <div class="ring"><img src="${esc(c.image || '')}" alt="${esc(c.name)}" loading="lazy"></div><b>${esc(c.name)}</b><span>${c.count} styles</span></a>`).join('')}</div>
+    <div class="section-head center-head"><div><div class="eyebrow">Collections</div><h2>Shop by category</h2></div></div>
+    <div class="cat-grid">${state.categories.map((cat) => `<a class="cat-tile" href="/shop?category=${esc(cat.slug)}" data-link>
+      <div class="ring"><img src="${esc(cat.image || '')}" alt="" loading="lazy"></div><b>${esc(cat.name)}</b></a>`).join('')}</div>
+  </div></section>
+  ${productTabs()}
+  <section class="section banner-wrap"><div class="container">
+    <a class="banner" href="/shop?category=readymade" data-link>
+      <img src="/images/products/shimmer-stretch-gold.webp" alt="" loading="lazy">
+      <div class="banner-copy"><div class="eyebrow">Ready to wear</div><h2>No tailor. No waiting.<br>Just wear it.</h2>
+        <p>Stretch jacquard blouses in sizes 32–44, from ${inr(499)}.</p><span class="btn">Shop the Stretch Edit</span></div>
+    </a></div></section>
+  <section class="section"><div class="container">
+    <div class="section-head center-head"><div><div class="eyebrow">Find your match</div><h2>Shop by colour</h2></div></div>
+    <div class="colour-row" id="colourRow"></div>
   </div></section>
   <section class="section" style="padding-top:0"><div class="container">
-    <div class="section-head"><div><div class="eyebrow">Loved by you</div><h2>Bestsellers</h2></div><a class="link" href="/shop?sort=popular" data-link>View all →</a></div>
-    <div id="bestsellers">${skeletonGrid(4)}</div>
-  </div></section>
-  <section class="section" style="padding-top:0"><div class="container promo">
-    <a class="promo-card promo-a" href="/shop?category=readymade" data-link><div class="eyebrow" style="color:var(--gold-light)">Ready to wear</div><h3>Shimmer Stretch</h3><p>No tailor, no waiting. Four colours, sizes 32–44, from ${inr(499)}.</p><img class="photo" src="/images/products/shimmer-stretch-gold.webp" alt="Gold shimmer stretch blouse"></a>
-    <a class="promo-card promo-b" href="/shop?category=bridal" data-link><div class="eyebrow" style="color:#fff3d6">Wedding season</div><h3>The Bridal Edit</h3><p>Maggam, zardosi and pearl work, custom stitched for your big day.</p><img src="/img/blouse.svg?c=a3121f&a=e6c15a&s=elbow&n=sweetheart&p=zari" alt=""></a>
-  </div></section>
-  <section class="section" style="padding-top:0"><div class="container">
-    <div class="section-head"><div><div class="eyebrow">Just in</div><h2>New arrivals</h2></div><a class="link" href="/shop?new=1" data-link>View all →</a></div>
-    <div id="newArrivals">${skeletonGrid(4)}</div>
-  </div></section>
+    <div class="section-head center-head"><div><div class="eyebrow">Budget friendly</div><h2>Shop by price</h2></div></div>
+    <div class="price-tiles">
+      ${[[499, 'Under'], [999, 'Under'], [1999, 'Under'], [2000, 'Premium']].map(([v, label]) => `<a class="price-tile" href="/shop?${label === 'Under' ? `maxPrice=${v}` : `minPrice=${v}`}&sort=price_asc" data-link>
+        <span>${label === 'Under' ? 'Under' : 'Luxe'}</span><b>${label === 'Under' ? inr(v) : `${inr(v)}+`}</b><i>Shop now →</i></a>`).join('')}
+    </div></div></section>
   <section class="section stitch-band"><div class="container">
-    <div class="section-head"><div><div class="eyebrow">Perfect fit, guaranteed</div><h2>How custom stitching works</h2></div><a class="link" href="/size-guide" data-link>Measurement guide →</a></div>
+    <div class="section-head center-head"><div><div class="eyebrow">Perfect fit, guaranteed</div><h2>Custom stitching in 4 steps</h2></div></div>
     <div class="stitch-grid">
       <div class="stitch-step"><h4>Pick your blouse</h4><p class="muted small">Choose any design marked “Custom fit” and select the Custom size.</p></div>
       <div class="stitch-step"><h4>Share measurements</h4><p class="muted small">Bust, waist, shoulder, lengths and armhole in inches. Our guide shows how.</p></div>
       <div class="stitch-step"><h4>We stitch it</h4><p class="muted small">Master tailors stitch your blouse in 5–7 days with extra margins for alterations.</p></div>
-      <div class="stitch-step"><h4>Delivered to you</h4><p class="muted small">Delivered to your door, with free alterations if anything needs a tweak.</p></div>
-    </div></div></section>
-  <section class="section"><div class="container">
-    <div class="section-head"><div><div class="eyebrow">Our promise</div><h2>Why shop with ${esc(state.config.name)}</h2></div></div>
-    <div class="testimonials">
-      <div class="quote"><span class="stars">✦</span><p>Stretch that actually fits</p><span class="muted small">Our ready-to-wear blouses stretch comfortably across sizes, so you can skip the tailor queue.</span></div>
-      <div class="quote"><span class="stars">✦</span><p>Try it, risk-free</p><span class="muted small">${state.config.returnDays}-day easy returns on ready sizes, and Cash on Delivery so you can pay when it arrives.</span></div>
-      <div class="quote"><span class="stars">✦</span><p>Honest prices</p><span class="muted small">GST included, free shipping over ${inr(state.config.freeShippingOver)}, and no surprises at checkout.</span></div>
-    </div></div></section>
+      <div class="stitch-step"><h4>Delivered to you</h4><p class="muted small">Free alterations if anything needs a tweak.</p></div>
+    </div><div class="center" style="margin-top:24px"><a class="btn btn-ghost" href="/size-guide" data-link>How to measure</a></div></div></section>
   <section id="recentWrap"></section>`;
 
-  const [best, fresh] = await Promise.all([
-    api('/api/products?sort=popular&limit=8'),
-    api('/api/products?new=1&sort=new&limit=4'),
-  ]);
-  $('#bestsellers').innerHTML = `<div class="grid">${best.products.map(productCard).join('')}</div>`;
-  $('#newArrivals').innerHTML = `<div class="grid">${fresh.products.map(productCard).join('')}</div>`;
+  wireSlider();
+  $$('.rail-tabs button').forEach((b) => b.onclick = () => loadRail(b.dataset.rail));
+  facetsCache ||= await api('/api/products/facets');
+  const colours = facetsCache.color.slice(0, 10);
+  const row = $('#colourRow');
+  if (row) {
+    row.innerHTML = colours.map(({ v }) => `<a class="colour-dot" href="/shop?color=${encodeURIComponent(v)}" data-link>
+      <i style="background:#${COLOUR_HEX[v.toLowerCase()] || 'bbbbbb'}"></i><span>${esc(v)}</span></a>`).join('');
+  }
+  await loadRail('sort=popular');
   renderRecent($('#recentWrap'));
 }
 
@@ -490,16 +556,32 @@ async function productPage(slug, params) {
         <button class="btn btn-gold" id="buyBtn">Buy now</button>
         <button class="btn btn-ghost ${p.inWishlist || wishlist.has(p.id) ? 'on' : ''}" data-wish="${p.id}" style="flex:0" aria-label="Wishlist">${HEART}</button>
       </div>
-      <div class="pincode"><b>📍 Check delivery</b>
-        <form id="pinForm"><input class="input" name="pin" inputmode="numeric" maxlength="6" placeholder="Enter pincode" value="${esc(store.get('pincode', ''))}" aria-label="Pincode"><button class="btn btn-ghost btn-sm">Check</button></form>
+      <div class="offers" id="offersBox" hidden><div class="offers-head">${ICON.tag}<b>Available offers</b></div><ul id="offersList"></ul></div>
+      <div class="pincode"><b>Check delivery</b>
+        <form id="pinForm"><input class="input" name="pin" inputmode="numeric" maxlength="6" placeholder="Enter your pincode" value="${esc(store.get('pincode', ''))}" aria-label="Pincode"><button class="btn btn-ghost btn-sm">Check</button></form>
         <div id="pinResult" class="small" style="margin-top:8px"></div></div>
-      <div class="trust"><div><b>100% Genuine</b>Handcrafted</div><div><b>${state.config.returnDays}-day returns</b>Easy pickups</div><div><b>Secure</b>UPI · Cards · COD</div></div>
+      <div class="trust">
+        <div>${ICON.cash}<b>Cash on Delivery</b></div>
+        <div>${ICON.returns}<b>${state.config.returnDays}-day returns</b></div>
+        <div>${ICON.truck}<b>Free shipping ${inr(state.config.freeShippingOver)}+</b></div>
+      </div>
+      <div class="accordions">
+        <details open><summary>Product details</summary><div><p>${esc(p.description)}</p>
+          <div class="specs">${[['Fabric', p.fabric], ['Work', p.work], ['Sleeve', p.sleeve], ['Neckline', p.neck], ['Occasion', p.occasion], ['Colour', p.color],
+            ['Fit', p.customStitching ? 'Ready size or custom stitched' : 'Ready to wear, stretchable']]
+            .map(([k, v]) => `<div><span>${k}</span>${esc(v || '—')}</div>`).join('')}</div></div></details>
+        <details><summary>Size &amp; fit</summary><div><p>Sizes refer to your bust measurement in inches. ${p.customStitching ? 'Between sizes? Choose “Custom fit” and we will stitch it to your measurements.' : 'The stretch fabric gives a snug, comfortable fit; if you are between sizes, pick the larger one.'}</p>
+          <a class="link" href="/size-guide" data-link>View size chart</a></div></details>
+        <details><summary>Wash &amp; care</summary><div><ul><li>Hand wash cold or dry clean; do not bleach.</li><li>Dry in shade, inside out, to keep the shimmer and colour fresh.</li><li>Iron on reverse at low heat; avoid direct heat on embellishment.</li></ul></div></details>
+        <details><summary>Shipping &amp; returns</summary><div><ul><li>Ready sizes dispatch within 24–48 hours${p.customStitching ? '; custom stitched in 5–7 days' : ''}.</li><li>Free shipping on orders over ${inr(state.config.freeShippingOver)}, otherwise ${inr(state.config.shippingFee)}.</li>
+          <li>Cash on Delivery available (${inr(state.config.codFee)} handling fee).</li><li>${state.config.returnDays}-day easy returns on ready sizes.</li></ul></div></details>
+      </div>
       <div class="share">Share: <button class="btn btn-ghost btn-sm" id="shareWa">WhatsApp</button><button class="btn btn-ghost btn-sm" id="copyLink">Copy link</button>
         <button class="btn btn-ghost btn-sm" data-compare="${p.id}" data-compare-json='${esc(JSON.stringify({ id: p.id, name: p.name, images: p.images }))}'>Compare</button></div>
     </div>
   </div>
-  <div class="tabs" role="tablist"><button class="on" data-tab="desc">Description</button><button data-tab="specs">Specifications</button><button data-tab="care">Care &amp; Fit</button><button data-tab="ship">Shipping &amp; Returns</button></div>
-  <div class="tab-panel" id="tabPanel"></div>
+  <div class="sticky-buy" id="stickyBuy"><div><b>${inr(p.price)}</b>${p.mrp > p.price ? ` <s>${inr(p.mrp)}</s>` : ''}<span class="small muted" id="stickySize">Select a size</span></div>
+    <button class="btn" id="stickyAdd">Add to bag</button></div>
   <section id="reviews" class="section" style="padding-top:20px"><h2>Ratings &amp; Reviews</h2><div id="reviewsBody"></div></section>
   ${p.related.length ? `<section class="section" style="padding-top:0"><div class="section-head"><h2>You may also like</h2></div><div class="grid">${p.related.slice(0, 4).map(productCard).join('')}</div></section>` : ''}
   </div><div id="recentWrap"></div>`;
@@ -521,6 +603,7 @@ async function productPage(slug, params) {
   let size = null;
   wireSizePicker(app, p, (s) => {
     size = s;
+    $('#stickySize').textContent = s === 'Custom' ? 'Custom fit' : `Size ${s}`;
     $('#customBox').hidden = s !== 'Custom';
     $('#pdpErr').textContent = '';
   });
@@ -566,21 +649,22 @@ async function productPage(slug, params) {
     try { await navigator.clipboard.writeText(location.href); toast('Link copied'); } catch { toast('Could not copy link', true); }
   };
 
-  const tabs = {
-    desc: `<p>${esc(p.description)}</p>`,
-    specs: `<div class="specs">${[['Fabric', p.fabric], ['Work', p.work], ['Sleeve', p.sleeve], ['Neckline', p.neck], ['Occasion', p.occasion], ['Colour', p.color],
-      ['Lining', 'Cotton lining'], ['Closure', 'Front/back hooks'], ['Custom stitching', p.customStitching ? 'Available' : 'Not available']]
-      .map(([k, v]) => `<div><span>${k}</span>${esc(v || '—')}</div>`).join('')}</div>`,
-    care: '<ul><li>Dry clean recommended for silk, zari and embellished blouses.</li><li>Cotton blouses: gentle hand wash in cold water, dry in shade.</li><li>Iron on reverse at low heat; avoid direct heat on embroidery.</li><li>All ready sizes include 1.5" seam margins for easy alterations.</li></ul>',
-    ship: `<ul><li>Ready sizes dispatch within 24–48 hours; custom stitched in 5–7 days.</li><li>Free shipping on orders over ${inr(state.config.freeShippingOver)}, otherwise ${inr(state.config.shippingFee)}.</li>
-      <li>Cash on Delivery available (${inr(state.config.codFee)} handling fee).</li><li>${state.config.returnDays}-day easy returns on ready sizes. Custom-stitched blouses are non-returnable but include free alterations.</li></ul>`,
-  };
-  const showTab = (k) => {
-    $$('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === k));
-    $('#tabPanel').innerHTML = tabs[k];
-  };
-  $$('.tabs button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
-  showTab('desc');
+  $('#stickyAdd').onclick = () => $('#addBtn').click();
+  // Show the sticky buy bar once the main buttons scroll out of view (mobile).
+  const io = new IntersectionObserver(([e]) => $('#stickyBuy')?.classList.toggle('show', !e.isIntersecting && e.boundingClientRect.top < 0));
+  io.observe($('.buy-row'));
+
+  api('/api/coupons').then((coupons) => {
+    if (!coupons.length || !$('#offersBox')) return;
+    $('#offersList').innerHTML = coupons.map((c) => `<li><span>${esc(c.description || '')}</span> <button class="coupon-code" data-copy-code="${esc(c.code)}" title="Copy code">${esc(c.code)}</button></li>`).join('');
+    $('#offersBox').hidden = false;
+    $$('[data-copy-code]').forEach((btn) => btn.onclick = async () => {
+      state.coupon = btn.dataset.copyCode;
+      store.set('coupon', state.coupon);
+      try { await navigator.clipboard.writeText(btn.dataset.copyCode); } catch { /* clipboard optional */ }
+      toast(`Code ${esc(btn.dataset.copyCode)} will be applied at checkout`);
+    });
+  }).catch(() => {});
 
   renderReviews(p);
   renderRecent($('#recentWrap'), p.id);
@@ -1204,6 +1288,8 @@ async function router({ keepScroll } = {}) {
   const path = location.pathname.replace(/\/+$/, '') || '/';
   const params = new URLSearchParams(location.search);
   $$('.main-nav a').forEach((a) => a.classList.toggle('active', a.getAttribute('href') === path + location.search));
+  $$('.bottom-nav a').forEach((a) => a.classList.toggle('on', a.dataset.nav === '/' ? path === '/' : path.startsWith(a.dataset.nav)));
+  document.body.classList.toggle('on-product', path.startsWith('/product/'));
   if (!keepScroll) window.scrollTo(0, 0);
   const route = routes.find(([re]) => re.test(path));
   try {
@@ -1334,6 +1420,7 @@ function setupGlobalEvents() {
   });
 
   $('#cartBtn').onclick = () => { renderCartDrawer(); openDrawer('#cartDrawer'); };
+  $('#bottomCart').onclick = () => { renderCartDrawer(); openDrawer('#cartDrawer'); };
   $('#menuToggle').onclick = () => openDrawer('#mobileNav');
   $('#overlay').onclick = closeDrawers;
   $('#modalClose').onclick = closeModal;
