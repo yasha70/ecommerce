@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>OTP Verify Admin</title>
+<style>
+  :root{--ink:#1c1f24;--muted:#5b6573;--bg:#f6f7f9;--panel:#fff;--line:#e3e6ea;--accent:#2563eb;--ok:#067647;--bad:#b42318;--chip:#eef2f7}
+  @media (prefers-color-scheme:dark){:root{--ink:#e7eaee;--muted:#9aa4b2;--bg:#0f1115;--panel:#171a21;--line:#2a2f39;--chip:#232834}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  main{max-width:920px;margin:0 auto;padding:28px 16px 80px}
+  h1{font-size:24px;margin:0 0 4px} h2{font-size:17px;margin:0 0 12px}
+  .sub{color:var(--muted);margin:0 0 22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat b{display:block;font-size:22px} .stat span{color:var(--muted);font-size:13px}
+  input,select{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);width:100%}
+  button{font:inherit;font-weight:600;padding:9px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer}
+  button.alt{background:var(--chip);color:var(--ink)} button.danger{background:none;color:var(--bad);padding:4px 0}
+  button:disabled{opacity:.6}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end} .row>*{flex:1;min-width:180px}
+  label{font-size:13px;font-weight:600;display:block;margin-bottom:4px}
+  .item{border-top:1px solid var(--line);padding:12px 0} .item:first-of-type{border-top:0}
+  .head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+  .pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--chip)}
+  .pill.on{background:#dcfce7;color:var(--ok)} .pill.off{background:#fee4e2;color:var(--bad)}
+  code,.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:13px;word-break:break-all}
+  .muted{color:var(--muted);font-size:13px}
+  .secret{background:#fffbeb;border:1px solid #f5d77a;color:#1c1f24;border-radius:10px;padding:14px;margin-top:12px}
+  .secret code{display:block;background:#fff;border:1px solid #eadca8;padding:8px;border-radius:6px;margin:4px 0 10px}
+  .checks{display:flex;gap:16px;align-items:center;min-height:40px} .checks label{font-weight:500;display:flex;gap:6px;align-items:center;margin:0}
+  .checks input{width:auto}
+  .err{color:var(--bad)} [hidden]{display:none!important}
+  ol{padding-left:20px;margin:8px 0} li{margin-bottom:4px}
+</style>
+</head>
+<body>
+<main>
+  <h1>OTP Verify admin</h1>
+  <p class="sub">Gateway phones, websites and today's numbers.</p>
+
+  <section class="card" id="login">
+    <h2>Log in</h2>
+    <form class="row" id="loginForm">
+      <div><label for="pw">Admin password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+      <div style="flex:0"><button>Log in</button></div>
+    </form>
+    <p class="err" id="loginErr"></p>
+  </section>
+
+  <div id="dash" hidden>
+    <section class="card">
+      <div class="head"><h2>Today</h2><span class="muted" id="storeInfo"></span></div>
+      <div class="grid" id="stats"></div>
+    </section>
+
+    <section class="card">
+      <div class="head"><h2>Gateway phones</h2><button class="alt" id="pairBtn">Pair a phone</button></div>
+      <div id="pairBox" hidden class="secret">
+        <b>Set up the gateway phone</b>
+        <ol>
+          <li>On the Android phone that has the SIM, install the app: <a id="apkLink" href="#">download OTPGateway.apk</a> (allow "install unknown apps").</li>
+          <li>Open it and paste this <b>server address</b>:<code id="pairServer"></code></li>
+          <li>Paste this <b>pairing code</b> (shown only once):<code id="pairToken"></code></li>
+          <li>Type the phone's own mobile number, allow the permissions, and tap Start.</li>
+        </ol>
+      </div>
+      <div id="devices"></div>
+    </section>
+
+    <section class="card">
+      <h2>Add a website</h2>
+      <form id="appForm">
+        <div class="row">
+          <div><label for="appName">Name</label><input id="appName" placeholder="Pakka Bill" required></div>
+          <div><label for="appOrigins">Website addresses (comma separated)</label><input id="appOrigins" placeholder="https://pakkabill1.vercel.app"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="checks">
+            <label><input type="checkbox" id="chCall" checked> Missed call</label>
+            <label><input type="checkbox" id="chSms" checked> SMS OTP</label>
+          </div>
+          <div style="flex:0"><button>Create</button></div>
+        </div>
+      </form>
+      <div id="newApp" class="secret" hidden></div>
+    </section>
+
+    <section class="card">
+      <h2>Websites</h2>
+      <div id="apps"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  var pw = '';
+  try { pw = sessionStorage.getItem('otpAdmin') || ''; } catch (e) {}
+  var $ = function (id) { return document.getElementById(id); };
+
+  function api(method, path, body) {
+    return fetch('/api/v1/admin/' + path, {
+      method: method,
+      headers: { authorization: 'Bearer ' + pw, 'content-type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) { var e = new Error(d.message || 'Request failed'); e.status = r.status; throw e; }
+        return d;
+      });
+    });
+  }
+
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === 'text') n.textContent = attrs[k];
+      else if (k === 'on') Object.keys(attrs.on).forEach(function (ev) { n.addEventListener(ev, attrs.on[ev]); });
+      else n.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c) n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return n;
+  }
+
+  function ago(ts) {
+    if (!ts) return 'never';
+    var s = Math.round((Date.now() - ts) / 1000);
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.round(s / 60) + ' min ago';
+    return new Date(ts).toLocaleString();
+  }
+
+  function render(d) {
+    $('storeInfo').textContent = d.store === 'redis' ? 'Database connected' : 'WARNING: no database connected (data is lost on restart)';
+    $('storeInfo').className = d.store === 'redis' ? 'muted' : 'err';
+    $('apkLink').href = d.apk_url;
+    var s = d.stats || {};
+    $('stats').replaceChildren.apply($('stats'), [
+      ['Missed calls verified', s.calls_verified], ['Other calls', s.calls_other], ['SMS sent', s.sms_sent],
+      ['SMS failed', s.sms_failed], ['SMS waiting', s.queued]
+    ].map(function (x) { return el('div', { class: 'stat' }, [el('b', { text: String(x[1] || 0) }), el('span', { text: x[0] })]); }));
+
+    var devs = d.devices.length ? d.devices.map(function (dv) {
+      return el('div', { class: 'item' }, [
+        el('div', { class: 'head' }, [
+          el('div', {}, [el('b', { text: dv.name + ' ' }), el('span', { class: 'pill ' + (dv.online ? 'on' : 'off'), text: dv.online ? 'Online' : 'Offline' })]),
+          el('button', { class: 'danger', text: 'Remove', on: { click: function () {
+            if (confirm('Remove this phone? It stops working until paired again.')) api('POST', 'devices/unpair', { id: dv.id }).then(load);
+          } } })
+        ]),
+        el('div', { class: 'muted', text: 'Number: ' + (dv.number || 'not set') + ' · Missed calls: ' + (dv.calls ? 'on' : 'off') +
+          ' · SMS: ' + (dv.sms ? 'on' : 'off') + (dv.battery != null ? ' · Battery ' + dv.battery + '%' : '') + ' · Last seen ' + ago(dv.lastSeen) })
+      ]);
+    }) : [el('p', { class: 'muted', text: 'No phone paired yet. Tap "Pair a phone".' })];
+    $('devices').replaceChildren.apply($('devices'), devs);
+
+    var apps = d.apps.filter(function (a) { return !a.demo; });
+    $('apps').replaceChildren.apply($('apps'), apps.length ? apps.map(function (a) {
+      var origins = el('input', { value: a.allowedOrigins.join(', ') });
+      return el('div', { class: 'item' }, [
+        el('div', { class: 'head' }, [
+          el('b', { text: a.name }),
+          el('button', { class: 'danger', text: 'Delete', on: { click: function () {
+            if (confirm('Delete ' + a.name + '? Its keys stop working immediately.')) api('POST', 'apps/delete', { id: a.id }).then(load);
+          } } })
+        ]),
+        el('div', { class: 'muted' }, ['Widget key: ', el('code', { text: a.widgetKey }), ' · ', a.channels.join(' + ').replace('missed_call', 'missed call')]),
+        el('div', { class: 'row', style: 'margin-top:8px' }, [
+          origins,
+          el('div', { style: 'flex:0' }, [el('button', { class: 'alt', text: 'Save addresses', on: { click: function () {
+            api('POST', 'apps/update', { id: a.id, allowed_origins: origins.value.split(',') }).then(load);
+          } } })])
+        ])
+      ]);
+    }) : [el('p', { class: 'muted', text: 'No websites yet.' })]);
+  }
+
+  function load() {
+    return api('GET', 'overview').then(function (d) {
+      $('login').hidden = true; $('dash').hidden = false; render(d);
+    }, function (e) {
+      if (e.status === 401 || e.status === 503) { $('login').hidden = false; $('dash').hidden = true; $('loginErr').textContent = pw ? e.message : ''; }
+      else alert(e.message);
+    });
+  }
+
+  $('loginForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    pw = $('pw').value;
+    try { sessionStorage.setItem('otpAdmin', pw); } catch (e) {}
+    load();
+  });
+
+  $('pairBtn').addEventListener('click', function () {
+    var name = prompt('Name for this phone', 'Gateway phone');
+    if (name === null) return;
+    api('POST', 'devices/pair', { name: name }).then(function (d) {
+      $('pairServer').textContent = d.server;
+      $('pairToken').textContent = d.token;
+      $('pairBox').hidden = false;
+      load();
+    }, function (e) { alert(e.message); });
+  });
+
+  $('appForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var channels = [];
+    if ($('chCall').checked) channels.push('missed_call');
+    if ($('chSms').checked) channels.push('sms');
+    api('POST', 'apps', { name: $('appName').value, allowed_origins: $('appOrigins').value.split(','), channels: channels })
+      .then(function (d) {
+        var box = $('newApp');
+        box.replaceChildren(
+          el('b', { text: d.app.name + ' created. Copy the secret key now: it is shown only once.' }),
+          el('div', { style: 'margin-top:8px' }, ['Secret API key (server only, e.g. OTP_SECRET_KEY):']), el('code', { text: d.secret_key }),
+          el('div', {}, ['Widget key (safe in web pages):']), el('code', { text: d.app.widgetKey })
+        );
+        box.hidden = false;
+        $('appForm').reset();
+        load();
+      }, function (e) { alert(e.message); });
+  });
+
+  if (pw) load();
+  setInterval(function () { if (!$('dash').hidden) load(); }, 30000);
+})();
+</script>
+</body>
+</html>
