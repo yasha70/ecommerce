@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTP Verify</title>
+<style>
+  :root{--ink:#1c1f24;--muted:#5b6573;--bg:#f6f7f9;--panel:#fff;--line:#e3e6ea;--accent:#2563eb;--code:#0f172a;}
+  @media (prefers-color-scheme:dark){:root{--ink:#e7eaee;--muted:#9aa4b2;--bg:#0f1115;--panel:#171a21;--line:#2a2f39;--code:#0b0d12;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  main{max-width:880px;margin:0 auto;padding:48px 16px 80px}
+  h1{font-size:34px;line-height:1.2;margin:0 0 8px}
+  h2{font-size:22px;margin:48px 0 12px}
+  h3{font-size:16px;margin:28px 0 8px}
+  p.lead{color:var(--muted);font-size:18px;margin:0 0 32px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+  @media (max-width:720px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .steps{margin:0;padding-left:20px;color:var(--muted)} .steps li{margin-bottom:6px}
+  pre{background:var(--code);color:#e2e8f0;padding:16px;border-radius:10px;overflow:auto;font-size:13px;line-height:1.5}
+  code{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+  p code,li code,td code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:.9em}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  #result{margin-top:14px;font-size:14px;color:var(--muted);word-break:break-all}
+  .pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;background:#dcfce7;color:#067647}
+</style>
+</head>
+<body>
+<main>
+  <h1>Real-time mobile number verification</h1>
+  <p class="lead">Drop-in OTP verification for any website: an embeddable widget plus a REST API, backed by the SMS gateway of your choice.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3 style="margin-top:0">Try it</h3>
+      <div id="demo" data-otp-widget data-widget-key="{{WIDGET_KEY}}"></div>
+      <div id="result"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">How it works</h3>
+      <ol class="steps">
+        <li>User enters their mobile number in the widget.</li>
+        <li>We generate a one-time code and send it by SMS.</li>
+        <li>User types the code; we check it in real time.</li>
+        <li>The widget hands your page a signed, single-use token.</li>
+        <li>Your server confirms the token with its secret key and trusts the number.</li>
+      </ol>
+      <p style="color:var(--muted);font-size:14px">In development the SMS is printed to the server console.</p>
+    </div>
+  </div>
+
+  <h2>1. Register your website</h2>
+  <pre><code>npm run create-app -- "My Shop" https://myshop.com</code></pre>
+  <p>You get a <b>secret API key</b> (<code>sk_…</code>, server only) and a public <b>widget key</b> (<code>wk_…</code>) that only works from the origins you list.</p>
+
+  <h2>2a. Option A: embed the widget</h2>
+  <pre><code>&lt;form action="/signup" method="post"&gt;
+  &lt;div data-otp-widget data-widget-key="wk_your_widget_key"&gt;&lt;/div&gt;
+  &lt;button&gt;Create account&lt;/button&gt;
+&lt;/form&gt;
+&lt;script src="{{PUBLIC_URL}}/widget.js" defer&gt;&lt;/script&gt;</code></pre>
+  <p>After verification the widget adds a hidden <code>otp_token</code> field to the form and fires an <code>otp:verified</code> event. On your server, confirm it:</p>
+  <pre><code>// Node.js example
+const r = await fetch('{{PUBLIC_URL}}/api/v1/token/verify', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.OTP_SECRET_KEY },
+  body: JSON.stringify({ token: req.body.otp_token }),
+});
+const result = await r.json();
+if (!r.ok) throw new Error(result.message);
+// result = { verified: true, mobile: "+919876543210", verified_at: "..." }</code></pre>
+
+  <h2>2b. Option B: call the API from your backend</h2>
+  <pre><code>curl -X POST {{PUBLIC_URL}}/api/v1/otp/send \
+  -H "Authorization: Bearer sk_your_secret_key" -H "content-type: application/json" \
+  -d '{"mobile":"+919876543210"}'
+# {"request_id":"req_…","mobile":"+91******3210","expires_in":300,"resend_after":30}
+
+curl -X POST {{PUBLIC_URL}}/api/v1/otp/verify \
+  -H "Authorization: Bearer sk_your_secret_key" -H "content-type: application/json" \
+  -d '{"request_id":"req_…","otp":"123456"}'
+# {"verified":true,"mobile":"+919876543210","token":"…"}</code></pre>
+
+  <h2>API reference</h2>
+  <table>
+    <tr><th>Endpoint</th><th>Auth</th><th>Body</th></tr>
+    <tr><td><code>POST /api/v1/otp/send</code></td><td>secret key</td><td><code>{ mobile }</code></td></tr>
+    <tr><td><code>POST /api/v1/otp/resend</code></td><td>secret key</td><td><code>{ request_id }</code></td></tr>
+    <tr><td><code>POST /api/v1/otp/verify</code></td><td>secret key</td><td><code>{ request_id, otp }</code></td></tr>
+    <tr><td><code>POST /api/v1/token/verify</code></td><td>secret key</td><td><code>{ token }</code></td></tr>
+    <tr><td><code>POST /api/v1/widget/{send,resend,verify}</code></td><td>widget key + origin</td><td>same as above</td></tr>
+  </table>
+  <p>Errors return a non-2xx status with <code>{ error, message }</code>; e.g. <code>invalid_mobile</code>, <code>invalid_otp</code> (with <code>attempts_left</code>), <code>otp_expired</code>, <code>resend_cooldown</code> / <code>too_many_otps</code> (with <code>retry_after</code>).</p>
+</main>
+
+<script src="{{PUBLIC_URL}}/widget.js" defer></script>
+<script>
+  document.getElementById('demo').addEventListener('otp:verified', function (e) {
+    var out = document.getElementById('result');
+    out.textContent = 'Confirming token with the backend…';
+    fetch('/demo/confirm', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: e.detail.token })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      out.innerHTML = d.verified
+        ? '<span class="pill">Backend confirmed</span> ' + d.mobile
+        : (d.message || 'Token rejected');
+    });
+  });
+</script>
+</body>
+</html>
