@@ -19,6 +19,13 @@ module.exports = {
     (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '') ||
     `http://localhost:${int('PORT', 3000)}`).replace(/\/$/, ''),
   secret: secret || 'insecure-dev-secret',
+  // Websites defined by setting instead of the admin panel (JSON list, see src/apps.js).
+  staticApps: (() => {
+    try { return JSON.parse(process.env.STATIC_APPS || '[]'); } catch {
+      console.error('[config] STATIC_APPS is not valid JSON; ignoring it.');
+      return [];
+    }
+  })(),
   // Password for the /admin panel (create client apps, pair gateway phones).
   adminPassword: process.env.ADMIN_PASSWORD || '',
   defaultCountryCode: (process.env.DEFAULT_COUNTRY_CODE || '91').replace(/\D/g, ''),

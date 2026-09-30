@@ -202,3 +202,14 @@ test('HTTP API end to end: admin, widget, gateway, token check', async (t) => {
   assert.equal(overview.body.stats.calls_verified, 1);
   assert.ok(!('secretKeyHash' in overview.body.apps[0]));
 });
+
+test('static apps from settings work with their keys and cannot be deleted', async () => {
+  const { sha256 } = require('../src/apps');
+  const store = new MemoryStore();
+  const sk = 'sk_' + 'a'.repeat(48);
+  const apps = new AppStore(store, [{ id: 'app_fixed', name: 'Fixed', secretKeyHash: sha256(sk), widgetKey: 'wk_' + 'b'.repeat(24), allowedOrigins: ['https://x.example/'] }]);
+  assert.equal((await apps.bySecretKey(sk)).id, 'app_fixed');
+  assert.equal((await apps.byWidgetKey('wk_' + 'b'.repeat(24))).allowedOrigins[0], 'https://x.example');
+  assert.equal(await apps.remove('app_fixed'), false);
+  assert.equal((await apps.list()).length, 1);
+});

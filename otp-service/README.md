@@ -1,99 +1,113 @@
-# OTP Verify — real-time mobile number verification service
+# OTP Verify — mobile number verification on your own phone
 
-A self-hosted alternative to MSG91's OTP widget: other websites use it to verify that a user
-owns a mobile number. It has a REST API for backends, a drop-in JavaScript widget for web pages,
-and pluggable SMS gateways. It has zero npm dependencies and needs Node.js 20.6+.
+A self-hosted alternative to MSG91 / Twilio Verify. Websites use it to check that a user owns
+a mobile number, by **missed call** (free) or **SMS OTP**. The texts and calls go through **your own
+Android phone and SIM** running the OTP Gateway app, so there is no SMS company in between.
 
-> **Note:** SMS delivery still goes through a telecom gateway (MSG91, Twilio or your own).
-> In India, commercial SMS also needs DLT registration of your sender ID and template.
-> In development the `console` provider prints OTPs to the server log instead of sending them.
+- Live service: https://otp-verify-plum.vercel.app (demo page and docs), admin panel at `/admin`
+- Gateway app: https://otp-verify-plum.vercel.app/gateway.apk
+- Used by Pakka Bill for sign-up and "Forgot password"
 
-## Quick start
+## How it works
 
-```bash
-cd otp-service
-cp .env.example .env        # set SECRET and choose an SMS_PROVIDER
-npm start                   # http://localhost:3000 — live demo + integration docs
-npm test
+```
+Website page ──widget.js──▶ OTP Verify (Vercel + Redis) ◀──polls / reports calls── Android gateway phone
+Website server ──token check (secret key)──▶ OTP Verify
 ```
 
-## Onboarding a client website
+**Missed call:** the user types their number, then rings the gateway phone from it. Android asks the
+gateway app (the phone's "caller ID & spam" app) about the incoming call. The app asks the server,
+and if that number is waiting to be verified, the call is cut at once. An unanswered call costs the
+caller nothing. Any other call rings normally, so the SIM still works as an ordinary phone.
 
-```bash
-npm run create-app -- "My Shop" https://myshop.com https://www.myshop.com
-```
+**SMS OTP:** the server queues the message. The gateway app picks it up (it checks every
+`GATEWAY_POLL_SECONDS`, 10 by default) and sends it from its SIM.
 
-This prints:
-- **Secret API key** `sk_…`: for server-to-server calls. It is shown once and only its hash is stored.
-- **Widget key** `wk_…`: public, and only accepted from the listed origins.
+When verification succeeds, the widget gives the page a signed, single-use token. The website's
+server confirms it with `POST /api/v1/token/verify` and its secret key.
 
-### Widget integration
+## Setting up the gateway phone
+
+1. Use an Android 10+ phone with a SIM that stays on, charged and online.
+2. In `/admin`, tap **Pair a phone**. This shows the server address and a pairing code.
+3. Install `gateway.apk` on the phone (allow "install unknown apps"), paste both values, type the
+   phone's own number and tap **Start**.
+4. Work through the checklist in the app:
+   - allow SMS
+   - set it as the **caller ID & spam app** (needed to cut verification calls)
+   - allow notifications
+   - turn off battery restrictions
+5. The admin panel shows the phone as **Online**.
+
+SMS limits: Indian operators usually cap personal SIMs at about 100 SMS a day. Heavy commercial
+sending from a personal SIM can get it blocked under TRAI rules. Missed-call verification has no
+such limit, so the widget offers it first.
+
+## Adding a website
+
+In `/admin` → **Add a website**, enter its name and address (e.g. `https://myshop.com`). You get:
+- a **secret key** `sk_…` for its server, shown once
+- a **widget key** `wk_…` for its pages, which works only from the listed addresses
+
+Websites can also be fixed in the `STATIC_APPS` setting (JSON; see `src/apps.js`). Pakka Bill is set
+up that way.
 
 ```html
 <form action="/signup" method="post">
-  <div data-otp-widget data-widget-key="wk_..."></div>
+  <div data-otp-widget data-widget-key="wk_..." data-accent="#6c4dff"></div>
   <button>Sign up</button>
 </form>
-<script src="https://otp.yourdomain.com/widget.js" defer></script>
+<script src="https://otp-verify-plum.vercel.app/widget.js" defer></script>
 ```
 
-After a successful verification the widget adds a hidden `otp_token` input to the form and
-dispatches an `otp:verified` event (`e.detail = { token, mobile }`). **Always** confirm the token
-on your server; never trust the browser alone:
+The widget adds a hidden `otp_token` field and fires `otp:verified`. Confirm the token on your server:
 
 ```bash
-curl -X POST https://otp.yourdomain.com/api/v1/token/verify \
-  -H "Authorization: Bearer sk_..." -H "content-type: application/json" \
-  -d '{"token":"<otp_token>"}'
-# {"verified":true,"mobile":"+919876543210","verified_at":"..."}
+curl -X POST https://otp-verify-plum.vercel.app/api/v1/token/verify \
+  -H "Authorization: Bearer sk_..." -H "content-type: application/json" -d '{"token":"..."}'
+# {"verified":true,"mobile":"+919876543210","channel":"missed_call","verified_at":"..."}
 ```
 
-Tokens are HMAC-signed, tied to one app, expire after 10 minutes and can be used once.
+## API
 
-### Pure API integration (your own UI)
+Server calls use `Authorization: Bearer sk_…`. The widget uses the same actions under
+`/api/v1/widget/*`, with `X-Widget-Key` and an allowed `Origin`.
 
 | Endpoint | Body | Response |
 |---|---|---|
-| `POST /api/v1/otp/send` | `{ mobile }` | `{ request_id, mobile (masked), expires_in, resend_after }` |
-| `POST /api/v1/otp/resend` | `{ request_id }` | same as send |
-| `POST /api/v1/otp/verify` | `{ request_id, otp }` | `{ verified, mobile, token }` |
-| `POST /api/v1/token/verify` | `{ token }` | `{ verified, mobile, verified_at }` |
+| `POST /api/v1/otp/config` | – | `{ channels, missed_call_online }` |
+| `POST /api/v1/otp/send` | `{ mobile, channel: "missed_call" \| "sms" }` | `{ request_id, channel, mobile (masked), expires_in, call_to \| resend_after }` |
+| `POST /api/v1/otp/status` | `{ request_id }` | `{ verified: false, … }` or `{ verified: true, mobile, token }` |
+| `POST /api/v1/otp/resend` | `{ request_id }` (SMS) | same as send |
+| `POST /api/v1/otp/verify` | `{ request_id, otp }` (SMS) | `{ verified, mobile, token }` |
+| `POST /api/v1/token/verify` | `{ token }` | `{ verified, mobile, channel, verified_at }` |
+| `GET /health` | – | `{ ok, store, missed_call_online, sms_online }` |
 
-Authenticate with `Authorization: Bearer sk_…` (or an `authkey: sk_…` header, as MSG91 uses).
-The widget uses the same routes under `/api/v1/widget/*` with an `X-Widget-Key` header.
+Errors come back as `{ error, message }`. Codes: `invalid_mobile`, `invalid_otp` (with
+`attempts_left`), `otp_expired`, `resend_cooldown` / `too_many_otps` / `rate_limited` (with
+`retry_after`), `missed_call_unavailable`, `delivery_failed`.
 
-Errors return `{ error, message, ... }`:
+## Running and deploying
 
-| `error` | HTTP | Meaning |
-|---|---|---|
-| `invalid_mobile` | 400 | Number could not be parsed |
-| `invalid_otp` | 400 | Wrong code (`attempts_left` included) |
-| `otp_expired` | 410 | Code expired or burned after too many attempts |
-| `resend_cooldown` / `too_many_otps` / `rate_limited` | 429 | Includes `retry_after` seconds |
-| `delivery_failed` | 502 | The SMS gateway rejected the message |
+```bash
+npm test          # unit + HTTP tests (in-memory store)
+npm start         # local server on :3000; see .env.example
+```
 
-## SMS providers
+On Vercel, `api/index.js` serves everything. Connect a **Redis (Upstash) store** to the project
+(Storage → Connect). All keys are prefixed `otp:`, so it can share a database with another app.
+Settings: `SECRET`, `ADMIN_PASSWORD`, optional `STATIC_APPS`, `GATEWAY_POLL_SECONDS`,
+`MISSED_CALL_NUMBER`.
 
-Set `SMS_PROVIDER` in `.env`:
+The gateway app lives in `android-gateway/`. `.github/workflows/otp-gateway.yml` builds it and
+publishes it as the `otp-gateway-latest` release. It is signed with a debug key, so installing a
+newer build may mean uninstalling the old one and pairing again.
 
-- `console`: prints to the log (development).
-- `msg91`: MSG91 Flow API. Needs `MSG91_AUTH_KEY` and a DLT-approved `MSG91_TEMPLATE_ID` whose text contains `##otp##`.
-- `twilio`: needs `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM`.
-- `webhook`: POSTs `{ to, message, otp }` to `SMS_WEBHOOK_URL` (your own gateway, an Android SMS-gateway app, etc).
+## Security
 
-To add another gateway, create `src/providers/<name>.js` exporting `send({ to, message, otp })`.
-
-## Security measures
-
-- OTPs are generated with `crypto.randomInt` and stored only as an HMAC. Comparisons are constant-time.
-- Codes expire (default 5 min) and are burned after 5 wrong attempts.
-- There is a resend cooldown (30 s), a per-number hourly cap (5), and a per-IP request limit (60/min) to limit SMS-pumping fraud.
-- Numbers are masked in API responses and logs.
-- Widget keys are locked to allowed origins, and secret keys are stored hashed.
-
-## Production notes
-
-- Set `NODE_ENV=production` and a strong `SECRET`. The server refuses to start without one, and the demo app is not created.
-- Run it behind HTTPS (nginx or Caddy). Set `TRUST_PROXY=1` so per-IP limits use `X-Forwarded-For`.
-- OTP state is kept in memory, so run one instance. To scale horizontally, move the maps in `src/otp.js` and `src/ratelimit.js` to Redis.
-- Consider adding a CAPTCHA before `send` on public pages if you see SMS-pumping abuse.
+- OTPs are stored only as an HMAC and compared in constant time.
+- Codes expire after 5 minutes and are burned after 5 wrong tries.
+- Limits: a cooldown between sends, a per-number hourly cap, and a per-IP limit.
+- A missed call verifies only the newest waiting request for that number.
+- Caller ID can in principle be spoofed. For high-value actions, prefer SMS OTP.
+- Secret keys and pairing codes are stored hashed. Widget keys are locked to their websites.

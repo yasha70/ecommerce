@@ -16,7 +16,7 @@ const APK_URL = process.env.GATEWAY_APK_URL ||
 
 /** Builds the request handler used both by the local server (server.js) and Vercel (api/index.js). */
 function createHandler({ cfg = config, store = createStore(), now } = {}) {
-  const apps = new AppStore(store);
+  const apps = new AppStore(store, cfg.staticApps);
   const gateway = new Gateway({ config: cfg, store, now });
   const otp = new OtpService({ config: cfg, store, gateway, provider: createProvider(cfg.sms, gateway), now });
 
@@ -135,7 +135,7 @@ function createHandler({ cfg = config, store = createStore(), now } = {}) {
     },
     'POST apps/update': async (b) => {
       const app = await apps.update(b.id, { name: b.name, allowedOrigins: b.allowed_origins, channels: b.channels });
-      if (!app) throw new OtpError(404, 'not_found', 'App not found.');
+      if (!app) throw new OtpError(404, 'not_found', 'App not found, or it is set in STATIC_APPS and cannot be changed here.');
       return { app: publicApp(app) };
     },
     'POST apps/delete': async (b) => ({ deleted: await apps.remove(b.id) }),
@@ -165,7 +165,12 @@ function createHandler({ cfg = config, store = createStore(), now } = {}) {
       if (route === 'GET /admin') return page(res, 'admin.html', 'text/html', { PUBLIC_URL: cfg.publicUrl });
       if (route === 'GET /gateway.apk') { res.writeHead(302, { location: APK_URL }); return res.end(); }
       if (route === 'GET /health') {
-        return send(res, 200, { ok: true, store: store.kind, missed_call_online: !!(await gateway.missedCallNumber()) });
+        return send(res, 200, {
+          ok: true,
+          store: store.kind,
+          missed_call_online: !!(await gateway.missedCallNumber()),
+          sms_online: cfg.sms.provider !== 'phone' || (await gateway.online('sms')).length > 0,
+        });
       }
 
       // Gateway phone. Not IP-limited: it polls continuously.

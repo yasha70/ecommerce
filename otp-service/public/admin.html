@@ -163,12 +163,12 @@
       return el('div', { class: 'item' }, [
         el('div', { class: 'head' }, [
           el('b', { text: a.name }),
-          el('button', { class: 'danger', text: 'Delete', on: { click: function () {
+          a.static ? el('span', { class: 'pill', text: 'Set in STATIC_APPS' }) : el('button', { class: 'danger', text: 'Delete', on: { click: function () {
             if (confirm('Delete ' + a.name + '? Its keys stop working immediately.')) api('POST', 'apps/delete', { id: a.id }).then(load);
           } } })
         ]),
         el('div', { class: 'muted' }, ['Widget key: ', el('code', { text: a.widgetKey }), ' · ', a.channels.join(' + ').replace('missed_call', 'missed call')]),
-        el('div', { class: 'row', style: 'margin-top:8px' }, [
+        a.static ? el('div', { class: 'muted', text: 'Addresses: ' + a.allowedOrigins.join(', ') }) : el('div', { class: 'row', style: 'margin-top:8px' }, [
           origins,
           el('div', { style: 'flex:0' }, [el('button', { class: 'alt', text: 'Save addresses', on: { click: function () {
             api('POST', 'apps/update', { id: a.id, allowed_origins: origins.value.split(',') }).then(load);

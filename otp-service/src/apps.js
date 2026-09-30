@@ -13,8 +13,21 @@ const CHANNELS = ['missed_call', 'sms'];
  *   - the verification channels it may use (missed_call, sms)
  */
 class AppStore {
-  constructor(store) {
+  /**
+   * `staticApps` are websites defined in the STATIC_APPS setting instead of the admin panel:
+   *   [{ "id": "app_pakkabill", "name": "Pakka Bill", "secretKeyHash": "<sha256 of sk_...>",
+   *      "widgetKey": "wk_...", "allowedOrigins": ["https://..."], "channels": ["missed_call", "sms"] }]
+   * They cannot be deleted from the admin panel.
+   */
+  constructor(store, staticApps = []) {
     this.store = store;
+    this.staticApps = (staticApps || []).map((a) => ({
+      ...a,
+      allowedOrigins: this.cleanOrigins(a.allowedOrigins),
+      channels: this.cleanChannels(a.channels),
+      createdAt: a.createdAt || '2026-01-01T00:00:00.000Z',
+      static: true,
+    }));
   }
 
   cleanOrigins(list) {
@@ -49,7 +62,7 @@ class AppStore {
 
   async update(id, { name, allowedOrigins, channels }) {
     const app = await this.byId(id);
-    if (!app) return null;
+    if (!app || app.static) return null;
     if (name) app.name = String(name).trim().slice(0, 60);
     if (allowedOrigins) app.allowedOrigins = this.cleanOrigins(allowedOrigins);
     if (channels) app.channels = this.cleanChannels(channels);
@@ -59,7 +72,7 @@ class AppStore {
 
   async remove(id) {
     const app = await this.byId(id);
-    if (!app) return false;
+    if (!app || app.static) return false;
     await this.store.hdel('apps', id);
     await this.store.del(`appkey:${app.secretKeyHash}`);
     await this.store.del(`widget:${app.widgetKey}`);
@@ -67,24 +80,29 @@ class AppStore {
   }
 
   async list() {
-    return Object.values(await this.store.hgetall('apps'))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return [...this.staticApps, ...Object.values(await this.store.hgetall('apps'))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))];
   }
 
   async byId(id) {
     if (!id) return null;
+    const fixed = this.staticApps.find((a) => a.id === id);
+    if (fixed) return fixed;
     const all = await this.store.hgetall('apps');
     return all[id] || null;
   }
 
   async bySecretKey(key) {
     if (typeof key !== 'string' || !/^sk_[0-9a-f]{48}$/.test(key)) return null;
-    return this.byId(await this.store.get(`appkey:${sha256(key)}`));
+    const h = sha256(key);
+    const fixed = this.staticApps.find((a) => a.secretKeyHash === h);
+    return fixed || this.byId(await this.store.get(`appkey:${h}`));
   }
 
   async byWidgetKey(key) {
     if (typeof key !== 'string' || !/^wk_[0-9a-f]{24}$/.test(key)) return null;
-    return this.byId(await this.store.get(`widget:${key}`));
+    const fixed = this.staticApps.find((a) => a.widgetKey === key);
+    return fixed || this.byId(await this.store.get(`widget:${key}`));
   }
 
   /** The demo app on the landing page: missed call only, so it can never be used to send SMS. */

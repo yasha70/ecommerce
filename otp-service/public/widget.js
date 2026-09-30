@@ -5,7 +5,8 @@
  *   <div data-otp-widget data-widget-key="wk_..." data-input-name="otp_token"></div>
  *
  * Or programmatically:
- *   OTPWidget.mount(element, { widgetKey: 'wk_...', mobile: '98765...', onVerified: ({ token, mobile }) => {} });
+ *   OTPWidget.mount(element, { widgetKey: 'wk_...', mobile: '98765...', accent: '#6c4dff', onVerified: ({ token, mobile }) => {} });
+ * The widget uses the page's font; `accent` (or data-accent) sets the button colour.
  *
  * On success the widget fires an "otp:verified" event on the element and, when it sits inside a
  * <form>, writes the token into a hidden input (default name "otp_token").
@@ -16,23 +17,23 @@
   var API = '{{PUBLIC_URL}}/api/v1/widget/';
 
   var CSS = [
-    ':host{all:initial;display:block;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1c1f24}',
+    ':host{all:initial;display:block;--acc:#2563eb;font-family:var(--font,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);color:#1c1f24}',
     '.box{border:1px solid #d9dde3;border-radius:12px;padding:16px;background:#fff;max-width:380px;box-sizing:border-box}',
     'label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}',
     '.row{display:flex;gap:8px}',
     'input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border:1px solid #c5cbd3;border-radius:8px;outline:none;box-sizing:border-box}',
-    'input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.18)}',
+    'input:focus{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent)}',
     'input.code{letter-spacing:.35em;text-align:center;font-variant-numeric:tabular-nums}',
-    'button,a.btn{font:inherit;font-size:14px;font-weight:600;padding:10px 14px;border:0;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block;text-align:center;box-sizing:border-box}',
+    'button,a.btn{font:inherit;font-size:14px;font-weight:600;padding:10px 14px;border:0;border-radius:8px;background:var(--acc);color:#fff;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block;text-align:center;box-sizing:border-box}',
     'button.alt{background:#eef2f7;color:#1c1f24}',
     'button:disabled{opacity:.55;cursor:default}',
-    'button.link{background:none;color:#2563eb;padding:0;font-weight:500}',
+    'button.link{background:none;color:var(--acc);padding:0;font-weight:500}',
     '.btns{display:grid;gap:8px;margin-top:10px}',
     '.call{margin:4px 0 10px;font-size:14px;line-height:1.5}',
     '.num{font-size:22px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums}',
     '.hint{font-size:12.5px;color:#5b6573;margin-top:8px;line-height:1.45}',
     '.wait{display:flex;align-items:center;gap:8px;font-size:13px;color:#5b6573;margin-top:10px}',
-    '.spin{width:14px;height:14px;border:2px solid #c5cbd3;border-top-color:#2563eb;border-radius:50%;animation:s 1s linear infinite}',
+    '.spin{width:14px;height:14px;border:2px solid #c5cbd3;border-top-color:var(--acc);border-radius:50%;animation:s 1s linear infinite}',
     '@keyframes s{to{transform:rotate(360deg)}}',
     '.msg{font-size:13px;margin-top:10px;min-height:1em}',
     '.msg:empty{display:none}',
@@ -66,6 +67,9 @@
     if (!key) throw new Error('OTPWidget: widgetKey is required');
     var inputName = opts.inputName || el.getAttribute('data-input-name') || 'otp_token';
     var root = el.attachShadow ? el.attachShadow({ mode: 'open' }) : el;
+    var accent = opts.accent || el.getAttribute('data-accent');
+    if (accent) el.style.setProperty('--acc', accent);
+    el.style.setProperty('--font', getComputedStyle(el).fontFamily);
 
     root.innerHTML =
       '<style>' + CSS + '</style>' +
