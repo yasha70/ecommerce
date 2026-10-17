@@ -8,7 +8,8 @@
       root.querySelectorAll('.app-nav-item').forEach(i=>i.classList.remove('active'));
       item.classList.add('active');
       const page = item.getAttribute('data-page');
-      ['size','profit','gst'].forEach(p=>root.querySelector('#page-'+p).classList.toggle('hidden', page!==p));
+      ['size','profit','gst','filing'].forEach(p=>root.querySelector('#page-'+p).classList.toggle('hidden', page!==p));
+      if(page==='filing') root.dispatchEvent(new Event('filing:show'));
     });
   });
 
@@ -477,6 +478,11 @@
       fy:[['financial','year']],
       date:[['invoice','date'],['order','date'],['date']],
       type:[['transaction','type'],['event','sub','type'],['event','type']],
+      // for the return-filing worksheets
+      state:[['end','customer','state','new'],['end','customer','state'],['customer','state'],['delivery','state'],['ship','to','state'],['shipping','state'],['buyer','state'],['place','supply'],['state','!tax']],
+      hsn:[['hsn']],
+      qty:[['quantity'],['qty']],
+      gstin:[['gstin','!operator','!ecommerce','!customer','!buyer']],
     };
     // Month for a report row: month number + financial year (Meesho) first, then the date column.
     function reportPeriod(r, c){
@@ -502,8 +508,11 @@
         const type = c.type>=0 ? norm(r[c.type]) : '';
         if(type.includes('cancel') && !type.includes('return')) return;
         let tax = c.tax>=0 ? num(r[c.tax]) : NaN;
-        if(!isFinite(tax) && c.rate>=0){ const rt = num(r[c.rate])||0; tax = value*(rt>1 ? rt/100 : rt); }
-        recs.push({value, tax:isFinite(tax) ? tax : 0, isReturn:/return|refund/.test(type) && !type.includes('cancel'), period:reportPeriod(r,c)});
+        const rt = c.rate>=0 ? num(r[c.rate]) : NaN, rate = isFinite(rt) ? (rt>0 && rt<1 ? rt*100 : rt) : null; // 5 or 0.05 -> 5 (%)
+        if(!isFinite(tax) && rate!=null) tax = value*rate/100;
+        const text = i=>i>=0 ? String(r[i]??'').trim() : '';
+        recs.push({value, tax:isFinite(tax) ? tax : 0, isReturn:/return|refund/.test(type) && !type.includes('cancel'), period:reportPeriod(r,c),
+          rate, state:text(c.state), hsn:text(c.hsn).replace(/\.0+$/,''), qty:c.qty>=0 ? Math.abs(num(r[c.qty])||0) : 0, gstin:text(c.gstin).toUpperCase()});
       });
       return {rows:recs, hasPeriod: recs.every(r=>r.period)};
     }
@@ -530,9 +539,103 @@
       }).sort((x,y)=>x.period.localeCompare(y.period) || x.type.localeCompare(y.type) || x.name.localeCompare(y.name));
     }
 
-    return {MONTHS, money, pct, toPeriod, fyStart, periodFromName, periodLabel, expectedRate, readPortal, readReport, summarizePortal};
+    // ---------- Return filing (GSTR-1 / GSTR-3B worksheets) ----------
+    const STATE_NAMES = {'01':'Jammu and Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh','05':'Uttarakhand','06':'Haryana','07':'Delhi','08':'Rajasthan',
+      '09':'Uttar Pradesh','10':'Bihar','11':'Sikkim','12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur','15':'Mizoram','16':'Tripura','17':'Meghalaya','18':'Assam',
+      '19':'West Bengal','20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh','24':'Gujarat','26':'Dadra and Nagar Haveli and Daman and Diu',
+      '27':'Maharashtra','29':'Karnataka','30':'Goa','31':'Lakshadweep','32':'Kerala','33':'Tamil Nadu','34':'Puducherry','35':'Andaman and Nicobar Islands',
+      '36':'Telangana','37':'Andhra Pradesh','38':'Ladakh','97':'Other Territory'};
+    const stateKey = s=>norm(String(s).replace(/&|\band\b|\bislands?\b|\bstate\b|\bthe\b/gi,''));
+    const STATE_ALIASES = {orissa:'21', pondicherry:'34', uttaranchal:'05', newdelhi:'07', nctofdelhi:'07', delhinct:'07', damandiu:'26', dadranagarhaveli:'26',
+      telengana:'36', chattisgarh:'22', chhatisgarh:'22', jk:'01', tamilnadu:'33'};
+    const STATE_KEYS = Object.entries(STATE_NAMES).map(([c,n])=>[stateKey(n), c]).sort((a,b)=>b[0].length-a[0].length);
+    // "29", "29-Karnataka", "KARNATAKA", "Jammu & Kashmir" -> "29" / "01"; null when unknown.
+    function stateCode(v){
+      const s = String(v??'').trim();
+      if(!s) return null;
+      const m = s.match(/^(\d{1,2})(?!\d)/);
+      if(m){ const c = m[1].padStart(2,'0'); return STATE_NAMES[c] ? c : c==='25' ? '26' : c==='28' ? '37' : null; } // old codes of merged / split states
+      const k = stateKey(s);
+      if(STATE_ALIASES[k]) return STATE_ALIASES[k];
+      const hit = STATE_KEYS.find(([n])=>k===n) || STATE_KEYS.find(([n])=>n.length>3 && k.includes(n));
+      return hit ? hit[1] : null;
+    }
+    const posLabel = c=>c ? c+'-'+STATE_NAMES[c] : 'Unknown state';
+    const RATES = [0,0.1,0.25,1,1.5,3,5,6,7.5,12,18,28,40];
+    const snapRate = r=>RATES.reduce((a,b)=>Math.abs(b-r)<Math.abs(a-r) ? b : a);
+
+    // recs: report rows with signed value / tax / qty (returns negative) for one month.
+    // homeState: the seller's state code (first two digits of the GSTIN). Place of supply is the
+    // customer's state, so a different state is inter-state (IGST), the same state CGST + SGST.
+    function filingSummary(recs, homeState){
+      const r2 = n=>Math.round(n*100)/100, add = (o, k, v)=>{ o[k] = (o[k]||0)+v; };
+      const tot = {taxable:0, igst:0, cgst:0, sgst:0}, b2cs = {}, inter = {}, hsn = {}, unknown = {rows:0, taxable:0}, noHsn = {rows:0, taxable:0};
+      recs.forEach(r=>{
+        const rate = snapRate(r.rate!=null ? r.rate : r.value ? Math.abs(r.tax/r.value)*100 : 0);
+        const tax = r.tax || r.value*rate/100, pos = stateCode(r.state);
+        const isInter = !!pos && pos!==homeState; // unknown state: counted as intra-state and flagged
+        const igst = isInter ? tax : 0, cs = isInter ? 0 : tax/2;
+        if(!pos){ unknown.rows++; unknown.taxable += r.value; }
+        if(!r.hsn){ noHsn.rows++; noHsn.taxable += r.value; }
+        tot.taxable += r.value; tot.igst += igst; tot.cgst += cs; tot.sgst += cs;
+        const b = b2cs[(pos||'')+'|'+rate] || (b2cs[(pos||'')+'|'+rate] = {pos, rate, taxable:0, igst:0, cgst:0, sgst:0});
+        b.taxable += r.value; b.igst += igst; b.cgst += cs; b.sgst += cs;
+        if(isInter){ const t = inter[pos] || (inter[pos] = {pos, taxable:0, igst:0}); t.taxable += r.value; t.igst += igst; }
+        const h = hsn[(r.hsn||'')+'|'+rate] || (hsn[(r.hsn||'')+'|'+rate] = {hsn:r.hsn||'', rate, qty:0, taxable:0, igst:0, cgst:0, sgst:0});
+        h.qty += r.qty||0; h.taxable += r.value; h.igst += igst; h.cgst += cs; h.sgst += cs;
+      });
+      const byPos = (a,b)=>(a.pos||'99').localeCompare(b.pos||'99') || a.rate-b.rate;
+      Object.keys(tot).forEach(k=>{ tot[k] = r2(tot[k]); });
+      return {
+        totals:tot, unknown, noHsn,
+        b2cs:Object.values(b2cs).sort(byPos), inter:Object.values(inter).sort(byPos),
+        hsn:Object.values(hsn).sort((a,b)=>a.hsn.localeCompare(b.hsn) || a.rate-b.rate),
+      };
+    }
+
+    // Statutory due dates for a return month ("YYYY-MM"). QRMP: GSTR-3B is quarterly, due on the 22nd
+    // or the 24th depending on the state; the first two months of a quarter only have the optional
+    // IFF and the PMT-06 tax payment. Extensions announced by CBIC are not included.
+    const QRMP_22ND = ['22','23','24','26','27','29','30','31','32','33','34','35','36','37'];
+    function dueDates(period, freq, homeState){
+      const [y,m] = period.split('-').map(Number), next = d=>new Date(m===12 ? y+1 : y, m===12 ? 0 : m, d);
+      if(freq!=='quarterly') return [{form:'GSTR-1', due:next(11), fee:true}, {form:'GSTR-3B', due:next(20), fee:true, pay:true}];
+      if(m%3) return [{form:'IFF (optional)', due:next(13), optional:true}, {form:'PMT-06 tax payment', due:next(25), pay:true}];
+      return [{form:'GSTR-1 (quarterly)', due:next(13), fee:true}, {form:'GSTR-3B (quarterly)', due:next(QRMP_22ND.includes(homeState) ? 22 : 24), fee:true, pay:true}];
+    }
+    // Late fee per return (half CGST, half SGST): Rs 50 a day, Rs 20 for a nil return, capped by the
+    // previous year's turnover (Notifications 19 & 20/2021-CT). Interest u/s 50: 18% a year on tax paid late in cash.
+    function lateFee(due, filed, nil, band){
+      const day = d=>Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+      const days = Math.max(0, Math.round((day(filed)-day(due))/864e5));
+      const cap = nil ? 500 : band==='small' ? 2000 : band==='mid' ? 5000 : 10000;
+      return {days, fee:Math.min(days*(nil ? 20 : 50), cap)};
+    }
+    const interest = (cash, days)=>Math.round(cash*0.18*days/365*100)/100;
+
+    // GSTR-3B set-off (Section 49 / Rule 88A): IGST credit goes first, to IGST and then to CGST / SGST;
+    // CGST credit pays CGST then IGST, SGST credit pays SGST then IGST (never each other). What is left
+    // comes from the cash ledger of the same head, and the rest has to be deposited.
+    function setOff(liab, itc, cash){
+      const L = {...liab}, I = {...itc}, used = {igst:0, cgst:0, sgst:0}, paidItc = {igst:0, cgst:0, sgst:0};
+      const use = (from, to, max)=>{ const t = Math.max(0, Math.min(I[from], L[to], max==null ? Infinity : max)); I[from] -= t; L[to] -= t; used[from] += t; paidItc[to] += t; };
+      use('igst','igst');
+      use('igst','cgst', Math.max(0, L.cgst-I.cgst)); use('igst','sgst', Math.max(0, L.sgst-I.sgst)); // where own credit falls short first
+      use('igst','cgst'); use('igst','sgst');
+      use('cgst','cgst'); use('cgst','igst');
+      use('sgst','sgst'); use('sgst','igst');
+      const heads = ['igst','cgst','sgst'], out = {};
+      heads.forEach(h=>{ const c = Math.max(0, Math.min(cash[h]||0, L[h])); out[h] = {liab:liab[h], itc:paidItc[h], cash:c, deposit:Math.max(0, L[h]-c), itcLeft:I[h]}; });
+      return out;
+    }
+
+    return {MONTHS, money, pct, toPeriod, fyStart, periodFromName, periodLabel, expectedRate, readPortal, readReport, summarizePortal,
+      STATE_NAMES, stateCode, posLabel, filingSummary, dueDates, lateFee, interest, setOff};
   })();
   // gst-core:end
+
+  // Files loaded on the GST TDS / TCS page, shared with the Return Filing page.
+  const gstShared = {changed:null};
 
   /* =========================================================
      GST TDS / TCS TOOL
@@ -604,6 +707,7 @@
           <span class="status ${p.error?'err':p.tables?'done':''}">${esc(p.status)}</span>${monthInput(p,i)}
           <span class="remove" data-i="${i}">&times;</span></span></div>`).join('');
       bindList(portalListEl, portalFiles, renderPortalFiles);
+      if(gstShared.changed) gstShared.changed();
     }
     function renderReportFiles(){
       reportListEl.innerHTML = reportFiles.map((p,i)=>`
@@ -612,10 +716,29 @@
           <span class="status ${p.error?'err':p.tables?'done':''}">${esc(p.status)}</span>${monthInput(p,i)}
           <span class="remove" data-i="${i}">&times;</span></span></div>`).join('');
       bindList(reportListEl, reportFiles, renderReportFiles);
+      if(gstShared.changed) gstShared.changed();
     }
     const portalInput = root.querySelector('#gst-filePortal'), reportInput = root.querySelector('#gst-fileReports');
     wireDrop(root.querySelector('#gst-dropPortal'), portalInput, files=>{ addFiles(portalFiles, files, renderPortalFiles, readPortal); portalInput.value=''; });
     wireDrop(root.querySelector('#gst-dropReports'), reportInput, files=>{ addFiles(reportFiles, files, renderReportFiles, readReport); reportInput.value=''; });
+    // For the Return Filing page: report rows signed like the match below (returns negative),
+    // and the portal credits per row.
+    gstShared.reportFiles = reportFiles;
+    gstShared.portalFiles = portalFiles;
+    gstShared.addReports = files=>addFiles(reportFiles, files, renderReportFiles, readReport);
+    gstShared.reportRecs = ()=>{
+      const out = [];
+      reportFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>{
+        const s = f.role==='returns' || r.value<0 || r.isReturn ? -1 : 1;
+        out.push({...r, period:r.period||f.month||'', value:s*Math.abs(r.value), tax:s*Math.abs(r.tax), qty:s*Math.abs(r.qty||0)});
+      })));
+      return out;
+    };
+    gstShared.portalRecs = ()=>{
+      const out = [];
+      portalFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>out.push({...r, period:r.period||f.month||''}))));
+      return out;
+    };
     // Tables read straight off the portal page by the browser extension (gst-extension/).
     document.addEventListener('gst:captured', e=>{
       const d = e.detail||{};
@@ -771,6 +894,190 @@
       URL.revokeObjectURL(url);
     });
     root.querySelector('#gst-runBtn').addEventListener('click', runGst);
+  })();
+
+  /* =========================================================
+     RETURN FILING HELPER
+  ========================================================= */
+  (function(){
+    const {money, periodLabel, posLabel, stateCode, STATE_NAMES, filingSummary, dueDates, lateFee, interest, setOff, summarizePortal} = GstCore;
+    const $ = id=>root.querySelector('#rf-'+id);
+    const HEADS = ['igst','cgst','sgst'], HEAD_LABEL = {igst:'IGST', cgst:'CGST', sgst:'SGST'};
+    const r2 = n=>Math.round((n||0)*100)/100;
+    const esc = s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const fmtDate = d=>d.toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'});
+    const STORE = 'gstFilingDetails';
+    let tables = {}, cashMonth = '';
+
+    // Your details are remembered in this browser only.
+    try{ const saved = JSON.parse(localStorage.getItem(STORE)||'{}'); ['gstin','freq','band'].forEach(k=>{ if(saved[k]) $(k).value = saved[k]; }); }catch(err){}
+    function saveDetails(){ try{ localStorage.setItem(STORE, JSON.stringify({gstin:$('gstin').value, freq:$('freq').value, band:$('band').value})); }catch(err){} }
+    const today = new Date();
+    $('date').value = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+
+    function homeState(){ const g = $('gstin').value.trim().toUpperCase(); return /^\d{2}[A-Z0-9]{13}$/.test(g) && STATE_NAMES[g.slice(0,2)] ? g.slice(0,2) : null; }
+    function showState(){ const h = homeState(); $('state').textContent = h ? posLabel(h) : $('gstin').value.trim() ? 'Not a valid GSTIN' : ' '; }
+
+    // Months with data, newest first; the GSTIN comes from the reports if not typed in.
+    function refreshData(){
+      const recs = gstShared.reportRecs ? gstShared.reportRecs() : [], portal = gstShared.portalRecs ? gstShared.portalRecs() : [];
+      const files = (gstShared.reportFiles||[]).filter(f=>f.tables), pfiles = (gstShared.portalFiles||[]).filter(f=>f.tables);
+      $('data').textContent = (files.length ? files.length+' marketplace report'+(files.length>1?'s':'')+' ('+recs.length.toLocaleString('en-IN')+' rows)' : 'No marketplace report yet')+
+        ' · '+(pfiles.length ? pfiles.length+' portal TDS / TCS file'+(pfiles.length>1?'s':'') : 'no portal TDS / TCS file (cash-ledger credit will be 0)');
+      if(!$('gstin').value.trim()){ const g = recs.map(r=>r.gstin).find(g=>/^\d{2}[A-Z0-9]{13}$/.test(g)); if(g){ $('gstin').value = g; saveDetails(); } }
+      showState();
+      const months = [...new Set([...recs, ...portal].map(r=>r.period).filter(Boolean))].sort().reverse();
+      const cur = $('month').value;
+      $('month').innerHTML = months.length ? months.map(p=>`<option value="${p}">${periodLabel(p)}</option>`).join('') : '<option value="">No months yet</option>';
+      if(months.includes(cur)) $('month').value = cur;
+      else{ const withSales = months.find(p=>recs.some(r=>r.period===p)); if(withSales) $('month').value = withSales; }
+      fillCash();
+    }
+    // Cash ledger starts from the month's TDS / TCS credit (the user can change it).
+    function fillCash(){
+      const p = $('month').value;
+      if(!p || p===cashMonth) return;
+      cashMonth = p;
+      const credit = {igst:0, cgst:0, sgst:0};
+      (gstShared.portalRecs ? gstShared.portalRecs() : []).filter(r=>r.period===p).forEach(r=>HEADS.forEach(h=>{ credit[h] += r[h]||0; }));
+      HEADS.forEach(h=>{ $('cash-'+h).value = r2(credit[h]); });
+    }
+    gstShared.changed = refreshData;
+    root.addEventListener('filing:show', refreshData);
+    $('month').addEventListener('change', fillCash);
+    $('gstin').addEventListener('input', ()=>{ showState(); saveDetails(); });
+    ['freq','band'].forEach(k=>$(k).addEventListener('change', saveDetails));
+    const fileInput = $('file');
+    wireDrop($('drop'), fileInput, files=>{ if(gstShared.addReports) gstShared.addReports(files); fileInput.value=''; });
+
+    // ---------- tables ----------
+    // cols: [{key, label, num}], rows: objects; numbers are click-to-copy; rows also kept for "copy table" / CSV.
+    function table(id, cols, rows, foot){
+      tables[id] = {cols, rows:foot ? [...rows, foot] : rows};
+      const cell = (c, r)=>c.num ? `<td class="num copyable${(r[c.key]||0)<0?' neg':''}" data-copy="${r2(r[c.key])}">${money(r[c.key])}</td>` : `<td>${esc(r[c.key])}</td>`;
+      root.querySelector('#rf-'+id.replace(/^rf-/,'')).innerHTML =
+        `<thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead>`+
+        `<tbody>${rows.length ? rows.map(r=>`<tr>${cols.map(c=>cell(c, r)).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}">Nothing for this month</td></tr>`}</tbody>`+
+        (foot ? `<tfoot><tr>${cols.map(c=>cell(c, foot)).join('')}</tr></tfoot>` : '');
+    }
+    const asText = id=>{ const t = tables[id]; return [t.cols.map(c=>c.label), ...t.rows.map(r=>t.cols.map(c=>c.num ? r2(r[c.key]) : r[c.key]??''))]; };
+    function toast(text){ const el = $('toast'); el.textContent = text; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(()=>el.classList.remove('show'), 1600); }
+    async function copy(text, what){
+      try{ await navigator.clipboard.writeText(text); toast('Copied '+what); }
+      catch(err){ toast('Could not copy — select and copy it instead'); }
+    }
+    $('results').addEventListener('click', e=>{
+      const td = e.target.closest('[data-copy]'), tt = e.target.closest('[data-copytable]');
+      if(td) copy(td.getAttribute('data-copy'), td.getAttribute('data-copy'));
+      else if(tt) copy(asText(tt.getAttribute('data-copytable')).map(r=>r.join('\t')).join('\n'), 'the table — paste into Excel or Sheets');
+    });
+    function download(name, rows){
+      const blob = new Blob([Papa.unparse(rows)], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    let last = null;
+    function run(){
+      const errBox = $('errBox'); errBox.innerHTML = '';
+      try{
+        const home = homeState(), period = $('month').value;
+        if(!home) throw new Error('Enter your GSTIN — its first two digits (your state) decide IGST vs CGST + SGST.');
+        if(!period) throw new Error('Add your marketplace sales / returns reports first (here or on the GST TDS / TCS page).');
+        const recs = gstShared.reportRecs().filter(r=>r.period===period);
+        const sum = filingSummary(recs, home);
+        const filed = (v=>{ const [y,m,d] = v.split('-').map(Number); return y ? new Date(y, m-1, d) : new Date(); })($('date').value);
+        const val = id=>parseFloat($(id).value)||0;
+        const itc = {}, cash = {};
+        HEADS.forEach(h=>{ itc[h] = Math.max(0, val('itc-'+h)); cash[h] = Math.max(0, val('cash-'+h)); });
+        const liab = {igst:Math.max(0, sum.totals.igst), cgst:Math.max(0, sum.totals.cgst), sgst:Math.max(0, sum.totals.sgst)};
+        const pay = setOff(liab, itc, cash);
+        const deposit = HEADS.reduce((s,h)=>s+pay[h].deposit, 0), cashUsed = HEADS.reduce((s,h)=>s+pay[h].cash+pay[h].deposit, 0);
+        const nil = !recs.length || HEADS.every(h=>!liab[h]);
+        const band = $('band').value, freq = $('freq').value;
+        const due = dueDates(period, freq, home).map(d=>{ const lf = lateFee(d.due, filed, nil, band); return {...d, ...lf, interest:d.pay ? interest(cashUsed, lf.days) : 0}; });
+        const payDue = due.find(d=>d.pay), lateRow = due.find(d=>d.pay && d.fee);
+        last = {period, sum};
+
+        root.querySelector('#rf-results').style.display = 'block';
+        $('due').innerHTML = due.map(d=>{
+          const left = Math.round((Date.UTC(d.due.getFullYear(), d.due.getMonth(), d.due.getDate())-Date.UTC(filed.getFullYear(), filed.getMonth(), filed.getDate()))/864e5);
+          const extra = d.days ? (d.fee ? 'late fee '+money(d.fee) : '')+(d.interest ? (d.fee ? ' + ' : '')+'interest '+money(d.interest) : '') : '';
+          const state = d.optional && d.days ? 'Closed — report these sales in the quarterly GSTR-1' :
+            d.days ? d.days+' day'+(d.days>1?'s':'')+' late'+(extra ? ' — '+extra : '') : left===0 ? 'Due on the filing date' : left+' day'+(left>1?'s':'')+' left';
+          return `<div class="due ${d.days && !d.optional?'late':''}"><div class="form">${d.form}</div><div class="date">${fmtDate(d.due)}</div><div class="left">${state}</div></div>`;
+        }).join('') + (freq==='quarterly' && +period.slice(5)%3 ? '<div class="due"><div class="form">GSTR-3B</div><div class="left">Quarterly — filed after the quarter. Pay this month\'s tax with PMT-06.</div></div>' : '');
+
+        const totalLiab = HEADS.reduce((s,h)=>s+liab[h], 0), byItc = HEADS.reduce((s,h)=>s+pay[h].itc, 0), byCash = HEADS.reduce((s,h)=>s+pay[h].cash, 0);
+        const fee = lateRow ? lateRow.fee : 0, int = payDue ? payDue.interest : 0;
+        root.querySelector('#rf-3bCards').innerHTML = [
+          {label:'Tax on sales (net of returns)', value:money(totalLiab)},
+          {label:'Paid with ITC', value:money(byItc)},
+          {label:'Paid from cash ledger (TCS / TDS)', value:money(byCash)},
+          {label:'Cash to deposit'+(fee||int ? ' (incl. late fee & interest)' : ''), value:money(deposit+fee+int), cls:deposit+fee+int>0 ? 'warn' : 'profit'},
+        ].map(c=>`<div class="stat ${c.cls||''}"><div class="label">${c.label}</div><div class="value">${c.value}</div></div>`).join('');
+
+        const T = sum.totals;
+        table('rf-31', [{key:'what', label:'Nature of supplies'}, {key:'taxable', label:'Taxable value', num:true}, {key:'igst', label:'IGST', num:true}, {key:'cgst', label:'CGST', num:true}, {key:'sgst', label:'SGST', num:true}, {key:'cess', label:'Cess', num:true}],
+          [{what:'(a) Outward taxable supplies (other than zero rated, nil rated and exempted)', taxable:T.taxable, igst:T.igst, cgst:T.cgst, sgst:T.sgst, cess:0}]);
+        const payRows = HEADS.map(h=>({head:HEAD_LABEL[h], liab:pay[h].liab, itc:pay[h].itc, cash:pay[h].cash, deposit:pay[h].deposit, left:pay[h].itcLeft}));
+        if(fee) payRows.push({head:'Late fee (CGST + SGST)', liab:fee, itc:0, cash:0, deposit:fee, left:0});
+        if(int) payRows.push({head:'Interest @ 18% for '+payDue.days+' day'+(payDue.days>1?'s':''), liab:int, itc:0, cash:0, deposit:int, left:0});
+        const sumOf = k=>payRows.reduce((s,r)=>s+(r[k]||0), 0);
+        table('rf-pay', [{key:'head', label:''}, {key:'liab', label:'Payable', num:true}, {key:'itc', label:'Paid with ITC', num:true}, {key:'cash', label:'From cash ledger', num:true}, {key:'deposit', label:'Cash to deposit', num:true}, {key:'left', label:'ITC carried forward', num:true}],
+          payRows, {head:'Total', liab:sumOf('liab'), itc:sumOf('itc'), cash:sumOf('cash'), deposit:sumOf('deposit'), left:sumOf('left')});
+        const inter = sum.inter.map(r=>({pos:posLabel(r.pos), taxable:r.taxable, igst:r.igst}));
+        table('rf-32', [{key:'pos', label:'Place of supply'}, {key:'taxable', label:'Taxable value', num:true}, {key:'igst', label:'IGST', num:true}], inter,
+          inter.length ? {pos:'Total', taxable:inter.reduce((s,r)=>s+r.taxable,0), igst:inter.reduce((s,r)=>s+r.igst,0)} : null);
+
+        const b2cs = sum.b2cs.map(r=>({pos:posLabel(r.pos), rate:r.rate+'%', taxable:r.taxable, igst:r.igst, cgst:r.cgst, sgst:r.sgst}));
+        table('rf-b2cs', [{key:'pos', label:'Place of supply'}, {key:'rate', label:'Rate'}, {key:'taxable', label:'Taxable value', num:true}, {key:'igst', label:'IGST', num:true}, {key:'cgst', label:'CGST', num:true}, {key:'sgst', label:'SGST', num:true}],
+          b2cs, b2cs.length ? {pos:'Total', rate:'', taxable:T.taxable, igst:T.igst, cgst:T.cgst, sgst:T.sgst} : null);
+        const hsn = sum.hsn.map(r=>({hsn:r.hsn||'(missing)', uqc:'PCS-PIECES', qty:r.qty, rate:r.rate+'%', taxable:r.taxable, igst:r.igst, cgst:r.cgst, sgst:r.sgst}));
+        table('rf-hsn', [{key:'hsn', label:'HSN'}, {key:'uqc', label:'UQC'}, {key:'qty', label:'Total quantity', num:true}, {key:'rate', label:'Rate'}, {key:'taxable', label:'Taxable value', num:true}, {key:'igst', label:'IGST', num:true}, {key:'cgst', label:'CGST', num:true}, {key:'sgst', label:'SGST', num:true}], hsn);
+        root.querySelectorAll('#rf-hsn td.copyable').forEach(td=>{ if(td.cellIndex===2) td.textContent = (+td.getAttribute('data-copy')).toLocaleString('en-IN'); }); // quantity, not rupees
+
+        // Table 14(a): one line per operator the portal credits come from (reports are not split by operator).
+        const credits = summarizePortal(gstShared.portalRecs().filter(r=>r.period===period && r.type==='TCS'), 10);
+        const ecos = [...new Map(credits.map(c=>[c.gstin, c.name])).entries()];
+        const eco = ecos.length ? ecos[0] : ['(e-commerce operator GSTIN)', ''];
+        table('rf-14', [{key:'gstin', label:'GSTIN of e-commerce operator'}, {key:'name', label:'Name'}, {key:'taxable', label:'Net value of supplies', num:true}, {key:'igst', label:'IGST', num:true}, {key:'cgst', label:'CGST', num:true}, {key:'sgst', label:'SGST', num:true}],
+          recs.length ? [{gstin:eco[0], name:eco[1], taxable:T.taxable, igst:T.igst, cgst:T.cgst, sgst:T.sgst}] : []);
+
+        // Checks before filing
+        const checks = [];
+        if(sum.unknown.rows) checks.push(`${sum.unknown.rows} row${sum.unknown.rows>1?'s':''} (${money(sum.unknown.taxable)}) have no customer state the tool could read — counted as intra-state (CGST + SGST). Check the state column of your report.`);
+        if(sum.noHsn.rows) checks.push(`${sum.noHsn.rows} row${sum.noHsn.rows>1?'s':''} (${money(sum.noHsn.taxable)}) have no HSN code — add it before filing Table 12.`);
+        const neg = sum.b2cs.filter(r=>r.taxable<0);
+        if(neg.length) checks.push(`Returns exceed sales for ${neg.map(r=>posLabel(r.pos)+' @ '+r.rate+'%').join(', ')} — B2CS accepts negative values only as an amendment of an earlier month; ask your CA how to report it.`);
+        if(ecos.length>1) checks.push(`Credits from ${ecos.length} operators this month — your reports are not split by operator, so Table 14 shows the total against ${esc(eco[1]||eco[0])}; split it per operator.`);
+        const portalNet = credits.reduce((s,c)=>s+c.net, 0);
+        if(credits.length && recs.length){
+          const diff = portalNet-T.taxable;
+          checks.push(Math.abs(diff)<=10 ? `Matches the operator's GSTR-8: ${money(portalNet)} net value reported for TCS.` :
+            `Operator's GSTR-8 shows ${money(portalNet)} net value for ${periodLabel(period)}, your reports ${money(T.taxable)} — a difference of ${money(diff)}. Find it on the GST TDS / TCS page before filing.`);
+        }
+        else if(recs.length) checks.push('Add the portal TDS / TCS file (GST TDS / TCS page or the browser extension) to check these figures against the operator\'s GSTR-8 and fill in your cash-ledger credit.');
+        if(!recs.length) checks.push(`No marketplace sales for ${periodLabel(period)} — a nil return if you had no other sales.`);
+        if(HEADS.some(h=>pay[h].itcLeft>0)) checks.push('Unused ITC is carried forward to next month.');
+        root.querySelector('#rf-checks').innerHTML = checks.length ? `<div class="table-title">Before you file</div><ul class="note">${checks.map(c=>`<li>${c}</li>`).join('')}</ul>` : '';
+      }catch(err){ errBox.innerHTML = '<div class="error">'+esc(err.message)+'</div>'; }
+    }
+
+    // CSV in the column order of the GST offline tool sheets (b2cs, hsn(b2c)).
+    $('dl-b2cs').addEventListener('click', ()=>{
+      if(!last) return;
+      download('b2cs_'+last.period+'.csv', [['Type','Place Of Supply','Rate','Applicable % of Tax Rate','Taxable Value','Cess Amount','E-Commerce GSTIN'],
+        ...last.sum.b2cs.map(r=>['OE', posLabel(r.pos), r.rate, '', r2(r.taxable), 0, ''])]);
+    });
+    $('dl-hsn').addEventListener('click', ()=>{
+      if(!last) return;
+      download('hsn_b2c_'+last.period+'.csv', [['HSN','Description','UQC','Total Quantity','Rate','Taxable Value','Integrated Tax Amount','Central Tax Amount','State/UT Tax Amount','Cess Amount'],
+        ...last.sum.hsn.map(r=>[r.hsn, '', 'PCS-PIECES', r2(r.qty), r.rate, r2(r.taxable), r2(r.igst), r2(r.cgst), r2(r.sgst), 0])]);
+    });
+    $('runBtn').addEventListener('click', run);
+    refreshData();
   })();
 
 })();

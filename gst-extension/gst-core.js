@@ -142,6 +142,11 @@ var GstCore = (function(){
       fy:[['financial','year']],
       date:[['invoice','date'],['order','date'],['date']],
       type:[['transaction','type'],['event','sub','type'],['event','type']],
+      // for the return-filing worksheets
+      state:[['end','customer','state','new'],['end','customer','state'],['customer','state'],['delivery','state'],['ship','to','state'],['shipping','state'],['buyer','state'],['place','supply'],['state','!tax']],
+      hsn:[['hsn']],
+      qty:[['quantity'],['qty']],
+      gstin:[['gstin','!operator','!ecommerce','!customer','!buyer']],
     };
     // Month for a report row: month number + financial year (Meesho) first, then the date column.
     function reportPeriod(r, c){
@@ -167,8 +172,11 @@ var GstCore = (function(){
         const type = c.type>=0 ? norm(r[c.type]) : '';
         if(type.includes('cancel') && !type.includes('return')) return;
         let tax = c.tax>=0 ? num(r[c.tax]) : NaN;
-        if(!isFinite(tax) && c.rate>=0){ const rt = num(r[c.rate])||0; tax = value*(rt>1 ? rt/100 : rt); }
-        recs.push({value, tax:isFinite(tax) ? tax : 0, isReturn:/return|refund/.test(type) && !type.includes('cancel'), period:reportPeriod(r,c)});
+        const rt = c.rate>=0 ? num(r[c.rate]) : NaN, rate = isFinite(rt) ? (rt>0 && rt<1 ? rt*100 : rt) : null; // 5 or 0.05 -> 5 (%)
+        if(!isFinite(tax) && rate!=null) tax = value*rate/100;
+        const text = i=>i>=0 ? String(r[i]??'').trim() : '';
+        recs.push({value, tax:isFinite(tax) ? tax : 0, isReturn:/return|refund/.test(type) && !type.includes('cancel'), period:reportPeriod(r,c),
+          rate, state:text(c.state), hsn:text(c.hsn).replace(/\.0+$/,''), qty:c.qty>=0 ? Math.abs(num(r[c.qty])||0) : 0, gstin:text(c.gstin).toUpperCase()});
       });
       return {rows:recs, hasPeriod: recs.every(r=>r.period)};
     }
@@ -195,6 +203,97 @@ var GstCore = (function(){
       }).sort((x,y)=>x.period.localeCompare(y.period) || x.type.localeCompare(y.type) || x.name.localeCompare(y.name));
     }
 
-    return {MONTHS, money, pct, toPeriod, fyStart, periodFromName, periodLabel, expectedRate, readPortal, readReport, summarizePortal};
+    // ---------- Return filing (GSTR-1 / GSTR-3B worksheets) ----------
+    const STATE_NAMES = {'01':'Jammu and Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh','05':'Uttarakhand','06':'Haryana','07':'Delhi','08':'Rajasthan',
+      '09':'Uttar Pradesh','10':'Bihar','11':'Sikkim','12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur','15':'Mizoram','16':'Tripura','17':'Meghalaya','18':'Assam',
+      '19':'West Bengal','20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh','24':'Gujarat','26':'Dadra and Nagar Haveli and Daman and Diu',
+      '27':'Maharashtra','29':'Karnataka','30':'Goa','31':'Lakshadweep','32':'Kerala','33':'Tamil Nadu','34':'Puducherry','35':'Andaman and Nicobar Islands',
+      '36':'Telangana','37':'Andhra Pradesh','38':'Ladakh','97':'Other Territory'};
+    const stateKey = s=>norm(String(s).replace(/&|\band\b|\bislands?\b|\bstate\b|\bthe\b/gi,''));
+    const STATE_ALIASES = {orissa:'21', pondicherry:'34', uttaranchal:'05', newdelhi:'07', nctofdelhi:'07', delhinct:'07', damandiu:'26', dadranagarhaveli:'26',
+      telengana:'36', chattisgarh:'22', chhatisgarh:'22', jk:'01', tamilnadu:'33'};
+    const STATE_KEYS = Object.entries(STATE_NAMES).map(([c,n])=>[stateKey(n), c]).sort((a,b)=>b[0].length-a[0].length);
+    // "29", "29-Karnataka", "KARNATAKA", "Jammu & Kashmir" -> "29" / "01"; null when unknown.
+    function stateCode(v){
+      const s = String(v??'').trim();
+      if(!s) return null;
+      const m = s.match(/^(\d{1,2})(?!\d)/);
+      if(m){ const c = m[1].padStart(2,'0'); return STATE_NAMES[c] ? c : c==='25' ? '26' : c==='28' ? '37' : null; } // old codes of merged / split states
+      const k = stateKey(s);
+      if(STATE_ALIASES[k]) return STATE_ALIASES[k];
+      const hit = STATE_KEYS.find(([n])=>k===n) || STATE_KEYS.find(([n])=>n.length>3 && k.includes(n));
+      return hit ? hit[1] : null;
+    }
+    const posLabel = c=>c ? c+'-'+STATE_NAMES[c] : 'Unknown state';
+    const RATES = [0,0.1,0.25,1,1.5,3,5,6,7.5,12,18,28,40];
+    const snapRate = r=>RATES.reduce((a,b)=>Math.abs(b-r)<Math.abs(a-r) ? b : a);
+
+    // recs: report rows with signed value / tax / qty (returns negative) for one month.
+    // homeState: the seller's state code (first two digits of the GSTIN). Place of supply is the
+    // customer's state, so a different state is inter-state (IGST), the same state CGST + SGST.
+    function filingSummary(recs, homeState){
+      const r2 = n=>Math.round(n*100)/100, add = (o, k, v)=>{ o[k] = (o[k]||0)+v; };
+      const tot = {taxable:0, igst:0, cgst:0, sgst:0}, b2cs = {}, inter = {}, hsn = {}, unknown = {rows:0, taxable:0}, noHsn = {rows:0, taxable:0};
+      recs.forEach(r=>{
+        const rate = snapRate(r.rate!=null ? r.rate : r.value ? Math.abs(r.tax/r.value)*100 : 0);
+        const tax = r.tax || r.value*rate/100, pos = stateCode(r.state);
+        const isInter = !!pos && pos!==homeState; // unknown state: counted as intra-state and flagged
+        const igst = isInter ? tax : 0, cs = isInter ? 0 : tax/2;
+        if(!pos){ unknown.rows++; unknown.taxable += r.value; }
+        if(!r.hsn){ noHsn.rows++; noHsn.taxable += r.value; }
+        tot.taxable += r.value; tot.igst += igst; tot.cgst += cs; tot.sgst += cs;
+        const b = b2cs[(pos||'')+'|'+rate] || (b2cs[(pos||'')+'|'+rate] = {pos, rate, taxable:0, igst:0, cgst:0, sgst:0});
+        b.taxable += r.value; b.igst += igst; b.cgst += cs; b.sgst += cs;
+        if(isInter){ const t = inter[pos] || (inter[pos] = {pos, taxable:0, igst:0}); t.taxable += r.value; t.igst += igst; }
+        const h = hsn[(r.hsn||'')+'|'+rate] || (hsn[(r.hsn||'')+'|'+rate] = {hsn:r.hsn||'', rate, qty:0, taxable:0, igst:0, cgst:0, sgst:0});
+        h.qty += r.qty||0; h.taxable += r.value; h.igst += igst; h.cgst += cs; h.sgst += cs;
+      });
+      const byPos = (a,b)=>(a.pos||'99').localeCompare(b.pos||'99') || a.rate-b.rate;
+      Object.keys(tot).forEach(k=>{ tot[k] = r2(tot[k]); });
+      return {
+        totals:tot, unknown, noHsn,
+        b2cs:Object.values(b2cs).sort(byPos), inter:Object.values(inter).sort(byPos),
+        hsn:Object.values(hsn).sort((a,b)=>a.hsn.localeCompare(b.hsn) || a.rate-b.rate),
+      };
+    }
+
+    // Statutory due dates for a return month ("YYYY-MM"). QRMP: GSTR-3B is quarterly, due on the 22nd
+    // or the 24th depending on the state; the first two months of a quarter only have the optional
+    // IFF and the PMT-06 tax payment. Extensions announced by CBIC are not included.
+    const QRMP_22ND = ['22','23','24','26','27','29','30','31','32','33','34','35','36','37'];
+    function dueDates(period, freq, homeState){
+      const [y,m] = period.split('-').map(Number), next = d=>new Date(m===12 ? y+1 : y, m===12 ? 0 : m, d);
+      if(freq!=='quarterly') return [{form:'GSTR-1', due:next(11), fee:true}, {form:'GSTR-3B', due:next(20), fee:true, pay:true}];
+      if(m%3) return [{form:'IFF (optional)', due:next(13), optional:true}, {form:'PMT-06 tax payment', due:next(25), pay:true}];
+      return [{form:'GSTR-1 (quarterly)', due:next(13), fee:true}, {form:'GSTR-3B (quarterly)', due:next(QRMP_22ND.includes(homeState) ? 22 : 24), fee:true, pay:true}];
+    }
+    // Late fee per return (half CGST, half SGST): Rs 50 a day, Rs 20 for a nil return, capped by the
+    // previous year's turnover (Notifications 19 & 20/2021-CT). Interest u/s 50: 18% a year on tax paid late in cash.
+    function lateFee(due, filed, nil, band){
+      const day = d=>Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+      const days = Math.max(0, Math.round((day(filed)-day(due))/864e5));
+      const cap = nil ? 500 : band==='small' ? 2000 : band==='mid' ? 5000 : 10000;
+      return {days, fee:Math.min(days*(nil ? 20 : 50), cap)};
+    }
+    const interest = (cash, days)=>Math.round(cash*0.18*days/365*100)/100;
+
+    // GSTR-3B set-off (Section 49 / Rule 88A): IGST credit goes first, to IGST and then to CGST / SGST;
+    // CGST credit pays CGST then IGST, SGST credit pays SGST then IGST (never each other). What is left
+    // comes from the cash ledger of the same head, and the rest has to be deposited.
+    function setOff(liab, itc, cash){
+      const L = {...liab}, I = {...itc}, used = {igst:0, cgst:0, sgst:0}, paidItc = {igst:0, cgst:0, sgst:0};
+      const use = (from, to, max)=>{ const t = Math.max(0, Math.min(I[from], L[to], max==null ? Infinity : max)); I[from] -= t; L[to] -= t; used[from] += t; paidItc[to] += t; };
+      use('igst','igst');
+      use('igst','cgst', Math.max(0, L.cgst-I.cgst)); use('igst','sgst', Math.max(0, L.sgst-I.sgst)); // where own credit falls short first
+      use('igst','cgst'); use('igst','sgst');
+      use('cgst','cgst'); use('cgst','igst');
+      use('sgst','sgst'); use('sgst','igst');
+      const heads = ['igst','cgst','sgst'], out = {};
+      heads.forEach(h=>{ const c = Math.max(0, Math.min(cash[h]||0, L[h])); out[h] = {liab:liab[h], itc:paidItc[h], cash:c, deposit:Math.max(0, L[h]-c), itcLeft:I[h]}; });
+      return out;
+    }
+
+    return {MONTHS, money, pct, toPeriod, fyStart, periodFromName, periodLabel, expectedRate, readPortal, readReport, summarizePortal,
+      STATE_NAMES, stateCode, posLabel, filingSummary, dueDates, lateFee, interest, setOff};
   })();
 })();
