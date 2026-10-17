@@ -1,13 +1,22 @@
 {
   "manifest_version": 3,
   "name": "GST TDS / TCS Calculator",
-  "version": "1.0.0",
-  "description": "Reads the TDS and TCS Credit Received table on the GST portal, works out the taxable amount and matches it with your marketplace TCS reports.",
+  "version": "1.1.0",
+  "description": "Calculates the taxable amount behind the TDS and TCS credits shown on the GST portal, live on the page, and matches it with your marketplace TCS reports.",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "action": {
     "default_title": "GST TDS / TCS Calculator",
     "default_popup": "popup.html",
     "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" }
   },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://*.gst.gov.in/*"],
+      "js": ["gst-core.js", "capture.js", "summary.js", "overlay.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
   "permissions": ["activeTab", "scripting", "storage"]
 }

@@ -7,5 +7,6 @@ Open `index.html` in a browser (needs internet for the CSV / Excel libraries).
 - **GST TDS / TCS** — taxable amount behind the TDS / TCS credits on the GST portal, matched
   month by month with marketplace TCS reports.
 
-`gst-extension/` packages the same dashboard as a Chrome extension that reads the TDS and TCS
-Credit Received table straight off the GST portal — see `gst-extension/README.md`.
+`gst-extension/` is a Chrome extension that shows the TDS / TCS calculation live on the GST
+portal's TDS and TCS Credit Received page and packages this dashboard for matching — see
+`gst-extension/README.md`.

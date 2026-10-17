@@ -1,9 +1,10 @@
 # GST TDS / TCS Calculator — Chrome extension
 
-Reads the **TDS and TCS Credit Received** table straight off the GST portal, works out the
-taxable amount behind every credit, and matches it month by month with your marketplace TCS
-reports (e.g. Meesho's GST report ZIP). It opens the same Order Tools dashboard as
-`index.html`, on the GST TDS / TCS page.
+Calculates the taxable amount behind the TDS and TCS credits on the GST portal **right on the
+page**: open **TDS and TCS Credit Received** and a panel shows the net taxable value, the credit,
+the inter / intra-state split and the estimated GST payable within a second, and recalculates by
+itself when you change the month or tab. It can also match the figures with your marketplace TCS
+reports (e.g. Meesho's GST report ZIP) in the full Order Tools calculator (`index.html`).
 
 ## Install (Chrome or Edge)
 
@@ -15,21 +16,24 @@ reports (e.g. Meesho's GST report ZIP). It opens the same Order Tools dashboard 
 ## Use
 
 1. Log in to the GST portal and open **Services › Returns › TDS and TCS Credit Received**.
-2. Pick the financial year and month, and open the **TCS** tab (or **TDS**).
-3. Click the ₹ icon › **Capture table from this page**. The calculator opens with the table
-   loaded; the month is taken from the page's dropdowns (you can change it next to the row).
-4. Repeat for each month or tab you need — captures go into the calculator that is already open.
-5. Optionally drop Meesho's GST report ZIP (or `tcs_sales.xlsx` / `tcs_sales_return.xlsx`)
-   under **Marketplace TCS reports**, then click **Calculate & match**.
+2. Pick the financial year and month and open the **TCS** (or **TDS**) tab. A panel with the
+   calculation appears at the bottom right of the page and updates whenever the table changes.
+   Use **–** to shrink it to a one-line total, **×** to close it.
+3. **Copy results** puts the figures on the clipboard, ready to paste into Excel or Google Sheets.
+4. **Match with reports** opens the full calculator with the table loaded; drop Meesho's GST
+   report ZIP (or `tcs_sales.xlsx` / `tcs_sales_return.xlsx`) there and click **Calculate & match**.
+5. Clicking the ₹ toolbar icon shows the same calculation for the current tab instantly — on the
+   portal or any other page with the credit table. Set your GST rate there (default 5%); the panel
+   follows it. **Show live panel on the page** brings the panel back after closing it.
 
 Only the table that is visible on screen is read, so if the portal splits the list into pages,
-capture each page. The extension only runs on the tab where you click it and sends nothing
-anywhere — everything is calculated inside your browser.
+look at each page. The extension reads the GST portal pages and the tab where you click it, and
+sends nothing anywhere — everything is calculated inside your browser.
 
 ## Updating
 
-`calculator.html` and `dashboard.js` are generated from `../index.html` (extension pages cannot
-run inline or CDN scripts). After changing `index.html`, run:
+`calculator.html`, `dashboard.js` and `gst-core.js` are generated from `../index.html` (extension
+pages cannot run inline or CDN scripts, and the popup and panel reuse the GST page's calculation). After changing `index.html`, run:
 
 ```
 node gst-extension/build.js

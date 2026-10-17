@@ -1,4 +1,4 @@
-// Regenerates calculator.html and dashboard.js from ../index.html.
+// Regenerates calculator.html, dashboard.js and gst-core.js from ../index.html.
 // Extension pages may not run inline or remotely hosted scripts, so the dashboard's
 // inline script moves to dashboard.js and the CDN libraries point at vendor/.
 // Run after editing index.html:  node gst-extension/build.js
@@ -20,6 +20,18 @@ const remote = html.match(/<script[^>]+src="https?:[^"]*"/);
 if (remote) throw new Error('remote script left in calculator.html: ' + remote[0]);
 if (/<script>/.test(html)) throw new Error('inline script left in calculator.html');
 
+// The popup and the on-page panel reuse the GST page's reading and calculation code.
+const core = src.match(/  \/\/ gst-core:start\n  const GstCore = ([\s\S]*?)\n  \/\/ gst-core:end/);
+if (!core) throw new Error('index.html: gst-core block not found');
+const helper = name => {
+  const m = src.match(new RegExp('^  function ' + name + '\\(.*\\}$', 'm'));
+  if (!m) throw new Error('index.html: helper ' + name + '() not found');
+  return m[0];
+};
+const coreJs = '// ' + note + '\n' +
+  'var GstCore = (function(){\n' + helper('norm') + '\n' + helper('fmtMoney') + '\n  return ' + core[1] + '\n})();\n';
+
 fs.writeFileSync(path.join(__dirname, 'calculator.html'), html);
 fs.writeFileSync(path.join(__dirname, 'dashboard.js'), '// ' + note + '\n' + inline[1]);
-console.log('Wrote calculator.html and dashboard.js');
+fs.writeFileSync(path.join(__dirname, 'gst-core.js'), coreJs);
+console.log('Wrote calculator.html, dashboard.js and gst-core.js');

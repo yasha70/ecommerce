@@ -332,14 +332,15 @@
   })();
 
   /* =========================================================
-     GST TDS / TCS TOOL
+     GST TDS / TCS CORE — reading and calculating, no page access.
+     gst-extension/build.js copies the block between the gst-core markers
+     into the extension, so its popup and on-page panel calculate exactly like this page.
   ========================================================= */
-  (function(){
-    let portalFiles = [], reportFiles = [];
+  // gst-core:start
+  const GstCore = (function(){
     const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
     const GSTIN = /\b\d{2}[A-Z0-9]{13}\b/i;
 
-    function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
     function money(n){ return n==null ? '—' : fmtMoney(n); }
     function pct(r){ return (r*100).toFixed(2)+'%'; }
     function isNumCell(c){ return typeof c==='number' || /^\(?-?[₹\s]*[\d,]+(\.\d+)?\)?$/.test(String(c??'').trim()); }
@@ -392,24 +393,8 @@
       return p<'2024-07' ? [0.01,0.01] : p>'2024-07' ? [0.005,0.005] : [0.005,0.01];
     }
 
+
     // ---------- Reading tables ----------
-    function needXLSX(){ if(typeof XLSX==='undefined') throw new Error('Excel reader did not load — check your internet, or save the file as CSV.'); }
-    function readTables(name, bytes){
-      if(/\.csv$/i.test(name)) return [{name:'', rows:Papa.parse(new TextDecoder().decode(bytes),{skipEmptyLines:true}).data}];
-      needXLSX();
-      const wb = XLSX.read(bytes,{type:'array', cellDates:true});
-      return wb.SheetNames.map(n=>({name:n, rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1, raw:true, defval:''})}));
-    }
-    // One source per file; a ZIP (Meesho GST report, GSTR-2A Excel download) gives one source per sheet file inside it.
-    async function fileSources(f){
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      if(!/\.zip$/i.test(f.name)) return [{name:f.name, size:f.size, load:()=>readTables(f.name, bytes)}];
-      needXLSX();
-      let entries = XLSX.CFB.read(bytes,{type:'array'}).FileIndex.filter(e=>e.type===2 && e.content && /\.(csv|xlsx|xls)$/i.test(e.name));
-      if(entries.some(e=>/tcs_sales/i.test(e.name))) entries = entries.filter(e=>/tcs_sales/i.test(e.name)); // Meesho: skip other sheets in the ZIP
-      if(!entries.length) throw new Error('no CSV / Excel file inside the ZIP');
-      return entries.map(e=>({name:f.name+' › '+e.name, size:e.size, load:()=>readTables(e.name, new Uint8Array(e.content))}));
-    }
     // Like colIndex, but skips columns already taken and supports "!token" exclusions.
     function findCol(header, groups, used){
       for(const g of groups){
@@ -521,6 +506,59 @@
       return {rows:recs, hasPeriod: recs.every(r=>r.period)};
     }
 
+    // ---------- Calculation ----------
+    // One line per credit type + operator/deductor + month (POS-wise rows are added together),
+    // with the inter / intra-state split and a check against the statutory rate.
+    function summarizePortal(recs, tol){
+      const by = {};
+      recs.forEach(r=>{
+        const k = r.type+'|'+r.gstin+'|'+r.period;
+        const a = by[k] || (by[k] = {type:r.type, gstin:r.gstin, name:r.name, period:r.period, gross:null, returned:null, net:0, igst:0, cgst:0, sgst:0});
+        if(r.gross!=null) a.gross = (a.gross||0)+r.gross;
+        if(r.returned!=null) a.returned = (a.returned||0)+r.returned;
+        a.net += r.net; a.igst += r.igst; a.cgst += r.cgst; a.sgst += r.sgst;
+        if(!a.name) a.name = r.name;
+      });
+      return Object.values(by).map(a=>{
+        const tax = a.igst+a.cgst+a.sgst, rate = expectedRate(a.type, a.period), issues = [];
+        const inter = tax ? a.net*a.igst/tax : null;
+        if(a.gross!=null && a.returned!=null && Math.abs(a.gross-a.returned-a.net)>tol) issues.push('Net ≠ gross − returned');
+        if(rate && (tax<a.net*rate[0]-tol || tax>a.net*rate[1]+tol)) issues.push('Rate '+pct(a.net ? tax/a.net : 0)+' (expected '+(rate[0]===rate[1] ? pct(rate[0]) : pct(rate[0])+'–'+pct(rate[1]))+')');
+        return {...a, tax, inter, intra: inter==null ? null : a.net-inter, effRate: a.net ? tax/a.net : 0, check: issues.join('; ') || 'OK'};
+      }).sort((x,y)=>x.period.localeCompare(y.period) || x.type.localeCompare(y.type) || x.name.localeCompare(y.name));
+    }
+
+    return {MONTHS, money, pct, toPeriod, fyStart, periodFromName, periodLabel, expectedRate, readPortal, readReport, summarizePortal};
+  })();
+  // gst-core:end
+
+  /* =========================================================
+     GST TDS / TCS TOOL
+  ========================================================= */
+  (function(){
+    const {money, pct, toPeriod, fyStart, periodFromName, periodLabel, expectedRate, readPortal, readReport, summarizePortal} = GstCore;
+    let portalFiles = [], reportFiles = [];
+
+    function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    // ---------- Reading files ----------
+    function needXLSX(){ if(typeof XLSX==='undefined') throw new Error('Excel reader did not load — check your internet, or save the file as CSV.'); }
+    function readTables(name, bytes){
+      if(/\.csv$/i.test(name)) return [{name:'', rows:Papa.parse(new TextDecoder().decode(bytes),{skipEmptyLines:true}).data}];
+      needXLSX();
+      const wb = XLSX.read(bytes,{type:'array', cellDates:true});
+      return wb.SheetNames.map(n=>({name:n, rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1, raw:true, defval:''})}));
+    }
+    // One source per file; a ZIP (Meesho GST report, GSTR-2A Excel download) gives one source per sheet file inside it.
+    async function fileSources(f){
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if(!/\.zip$/i.test(f.name)) return [{name:f.name, size:f.size, load:()=>readTables(f.name, bytes)}];
+      needXLSX();
+      let entries = XLSX.CFB.read(bytes,{type:'array'}).FileIndex.filter(e=>e.type===2 && e.content && /\.(csv|xlsx|xls)$/i.test(e.name));
+      if(entries.some(e=>/tcs_sales/i.test(e.name))) entries = entries.filter(e=>/tcs_sales/i.test(e.name)); // Meesho: skip other sheets in the ZIP
+      if(!entries.length) throw new Error('no CSV / Excel file inside the ZIP');
+      return entries.map(e=>({name:f.name+' › '+e.name, size:e.size, load:()=>readTables(e.name, new Uint8Array(e.content))}));
+    }
     // ---------- File lists ----------
     function addSources(list, sources, render, parse){
       sources.forEach(async src=>{
@@ -602,23 +640,7 @@
         }
         if(!recs.length) throw new Error('Please add the GST portal TDS / TCS file (or paste the table) first.');
 
-        // One line per credit type + operator/deductor + month (POS-wise rows are added together).
-        const by = {};
-        recs.forEach(r=>{
-          const k = r.type+'|'+r.gstin+'|'+r.period;
-          const a = by[k] || (by[k] = {type:r.type, gstin:r.gstin, name:r.name, period:r.period, gross:null, returned:null, net:0, igst:0, cgst:0, sgst:0});
-          if(r.gross!=null) a.gross = (a.gross||0)+r.gross;
-          if(r.returned!=null) a.returned = (a.returned||0)+r.returned;
-          a.net += r.net; a.igst += r.igst; a.cgst += r.cgst; a.sgst += r.sgst;
-          if(!a.name) a.name = r.name;
-        });
-        gstPortal = Object.values(by).map(a=>{
-          const tax = a.igst+a.cgst+a.sgst, rate = expectedRate(a.type, a.period), issues = [];
-          const inter = tax ? a.net*a.igst/tax : null;
-          if(a.gross!=null && a.returned!=null && Math.abs(a.gross-a.returned-a.net)>gstTol) issues.push('Net ≠ gross − returned');
-          if(rate && (tax<a.net*rate[0]-gstTol || tax>a.net*rate[1]+gstTol)) issues.push('Rate '+pct(a.net ? tax/a.net : 0)+' (expected '+(rate[0]===rate[1] ? pct(rate[0]) : pct(rate[0])+'–'+pct(rate[1]))+')');
-          return {...a, tax, inter, intra: inter==null ? null : a.net-inter, effRate: a.net ? tax/a.net : 0, check: issues.join('; ') || 'OK'};
-        }).sort((x,y)=>x.period.localeCompare(y.period) || x.type.localeCompare(y.type) || x.name.localeCompare(y.name));
+        gstPortal = summarizePortal(recs, gstTol);
 
         gstReports = {};
         reportFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>{
