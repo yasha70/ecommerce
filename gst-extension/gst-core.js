@@ -106,7 +106,9 @@ var GstCore = (function(){
       name:[['trade'],['legal','name'],['name']],
     };
     function nameType(n){ n = norm(n); return n.includes('tcs') && !n.includes('tds') ? 'TCS' : n.includes('tds') && !n.includes('tcs') ? 'TDS' : null; }
-    function readPortal(rows, fileName, sheet){
+    // defFy: financial year to read bare month names with when the table has no year column
+    // (e.g. the year picked in the portal's dropdown).
+    function readPortal(rows, fileName, sheet, defFy){
       sheet = String(sheet||'').trim();
       if(/^(tdsa|tcsa)$|amend/i.test(sheet)) return null; // GSTR-2A amendment sheets would double count
       const h = locateHeader(rows, PORTAL_COLS, c=>(c.gross>=0||c.net>=0||c.taxable>=0) && (c.igst>=0||c.cgst>=0||c.gstin>=0));
@@ -125,7 +127,7 @@ var GstCore = (function(){
           const net = order[0]>=0 || order[1]>=0 ? v(order[0]>=0 ? order[0] : order[1]) : gross-(returned||0);
           return {
             type, gstin: c.gstin>=0 ? String(r[c.gstin]).trim().toUpperCase() : '', name: c.name>=0 ? String(r[c.name]).trim() : '',
-            period: c.period>=0 ? toPeriod(r[c.period], c.fy>=0 ? fyStart(r[c.fy]) : null) : null,
+            period: c.period>=0 ? toPeriod(r[c.period], c.fy>=0 ? fyStart(r[c.fy]) : defFy||null) : null,
             gross, returned, net, igst:v(c.igst)||0, cgst:v(c.cgst)||0, sgst:v(c.sgst)||0,
           };
         });

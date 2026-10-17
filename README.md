@@ -8,5 +8,5 @@ Open `index.html` in a browser (needs internet for the CSV / Excel libraries).
   month by month with marketplace TCS reports.
 
 `gst-extension/` is a Chrome extension that shows the TDS / TCS calculation live on the GST
-portal's TDS and TCS Credit Received page and packages this dashboard for matching — see
-`gst-extension/README.md`.
+portal's TDS and TCS Credit Received page, adds up several pages and months, and packages this
+dashboard for matching — see `gst-extension/README.md`.

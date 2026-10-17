@@ -9,7 +9,8 @@
       keys.forEach(k=>{
         const c = all[k];
         const when = new Date(c.at).toLocaleString('en-IN', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'});
-        document.dispatchEvent(new CustomEvent('gst:captured', {detail:{name:'Portal capture'+(c.month ? ' · '+c.month+(c.fy ? ' '+c.fy : '') : '')+' · '+when, at:c.at, tables:c.tables, fy:c.fy, month:c.month}}));
+        const what = c.title==='All collected' ? ' · all collected pages' : c.month ? ' · '+c.month+(c.fy ? ' '+c.fy : '') : '';
+        document.dispatchEvent(new CustomEvent('gst:captured', {detail:{name:'Portal capture'+what+' · '+when, at:c.at, tables:c.tables, fy:c.fy, month:c.month}}));
       });
       if(keys.length) chrome.storage.local.remove(keys);
     });
