@@ -3,6 +3,14 @@
 (function(){
   document.querySelector('[data-page="gst"]').click();
 
+  // Same GST rate and tolerance as the popup and the on-page panel.
+  function useSettings(s){
+    if(!s) return;
+    if(s.rate!=null) document.getElementById('gst-pRate').value = s.rate;
+    if(s.tol!=null) document.getElementById('gst-pTol').value = s.tol;
+  }
+  chrome.storage.local.get('gstSettings', v=>useSettings(v && v.gstSettings));
+
   function pull(){
     chrome.storage.local.get(null, all=>{
       const keys = Object.keys(all).filter(k=>k.startsWith('cap:')).sort();
@@ -17,7 +25,9 @@
   }
   pull();
   chrome.storage.onChanged.addListener((changes, area)=>{
-    if(area==='local' && Object.keys(changes).some(k=>k.startsWith('cap:') && changes[k].newValue)) pull();
+    if(area!=='local') return;
+    if(changes.gstSettings) useSettings(changes.gstSettings.newValue);
+    if(Object.keys(changes).some(k=>k.startsWith('cap:') && changes[k].newValue)) pull();
   });
 
   chrome.runtime.onMessage.addListener((msg, sender, reply)=>{

@@ -32,3 +32,5 @@ function injectIntoOpenTabs(){
 }
 injectIntoOpenTabs();
 chrome.runtime.onInstalled.addListener(injectIntoOpenTabs);
+chrome.runtime.onInstalled.addListener(()=>chrome.storage.local.remove('gstCollection')); // v1.2 kept all pages in one item
+

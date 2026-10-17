@@ -19,16 +19,21 @@ reports (e.g. Meesho's GST report ZIP) in the full Order Tools calculator (`inde
 1. Log in to the GST portal and open **Services › Returns › TDS and TCS Credit Received**.
 2. Pick the financial year and month and open the **TCS** (or **TDS**) tab. A panel with the
    calculation appears at the bottom right of the page and updates whenever the table changes.
-   Use **–** to shrink it to a one-line total, **×** to close it.
+   Use **–** to shrink it to a one-line total, **⇄** to move it to the other side, **×** to close
+   it (pages are still collected). It remembers being shrunk or moved, so it stays out of the way of
+   the portal's Accept / Reject and SAVE buttons.
 3. **Several pages or months:** every page of the table and every month you open is remembered.
    Switch the panel to **All collected** for the combined total (one line per operator and month).
    If the table is split into pages, **Read all pages** goes to page 1 and clicks through them for
-   you (it only uses the table's own page buttons, never the portal's NEXT / PROCEED). The same
-   credit seen twice — on another visit, or on another screen such as GSTR-2A — is counted once.
+   you (it only uses the table's own page buttons, never the portal's NEXT / PROCEED, and waits
+   for each page's rows to load). The same credit seen twice — on another visit, or on another
+   screen such as GSTR-2A — is counted once; state-wise rows with equal amounts are kept apart.
+   Only the TDS / TCS credit screens are collected, not other tables such as GSTR-1 Table 14.
    **Clear** starts again from the page on screen; a collection untouched for 12 hours starts afresh.
 4. **Copy results** puts the figures of the view you are on on the clipboard, ready to paste into
    Excel or Google Sheets.
-5. **Match with reports** opens the full calculator with this page or everything collected; drop
+5. **Match with reports** opens the full calculator with this page or everything collected (sending
+   again never counts a credit twice there, and it uses the GST rate set in the popup); drop
    Meesho's GST report ZIP (or `tcs_sales.xlsx` / `tcs_sales_return.xlsx`) there and click
    **Calculate & match**.
 6. Clicking the ₹ toolbar icon shows the same calculation for the current tab instantly — on the

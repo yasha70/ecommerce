@@ -69,5 +69,6 @@ function captureGstTables(action){
       month: picked.find(t=>/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?[\s\-]*(20\d\d|\d\d)?$/i.test(t))||'',
     };
   }
-  return {tables, sig, fy:window.__gstHint.fy, month:window.__gstHint.month, hasNextPage:!!pageControl('next')};
+  // hasPages: the table is split into pages (a next page ahead, or earlier pages behind).
+  return {tables, sig, fy:window.__gstHint.fy, month:window.__gstHint.month, hasPages:!!(pageControl('next') || pageControl('first'))};
 }

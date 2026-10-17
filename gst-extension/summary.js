@@ -3,6 +3,9 @@
 // `var` and function declarations only, so injecting this file twice into a page is harmless.
 var GST_DEFAULTS = {rate:5, tol:10};
 var GST_COLLECTION_TTL = 12*3600e3; // a collection untouched for 12 hours starts afresh
+// Text of the TDS / TCS credit screens (credit received, GSTR-2A, GSTR-7 / 8). Other portal tables with a
+// GSTIN column, such as GSTR-1 Table 14 (your own sales), are not credits and are not collected.
+var GST_CREDIT_PAGE = /tds\s*(and|&)\s*tcs|tcs\s*credit|tds\s*credit|gstr[\s-]*(2a|7|8)\b/i;
 
 var GST_SUMMARY_CSS = `
 .g-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
@@ -31,12 +34,12 @@ function gstRecords(capture){
   (capture.tables||[]).forEach(t=>{
     const p = GstCore.readPortal(t, '', '', fy);
     if(p) p.rows.forEach(r=>{
-      // A credit is known by its operator and amounts, so the same credit seen on another page or
-      // screen (credit page, GSTR-2A, a saved copy) is counted once; identical rows on one page
-      // are numbered so both count.
-      const k = [r.gstin, r.gross, r.returned, r.net, r.igst, r.cgst, r.sgst].join('|');
+      // A credit is known by its operator, place of supply and amounts, so the same credit seen on
+      // another page or screen (credit page, GSTR-2A, a saved copy) is counted once; identical rows
+      // on one page are numbered so both count.
+      const base = [r.gstin, r.gross, r.returned, r.net, r.igst, r.cgst, r.sgst].join('|'), k = base+'|'+(r.pos||'');
       const n = seen[k] = (seen[k]||0)+1;
-      recs.push({...r, period:r.period||month, key:k+'#'+n});
+      recs.push({...r, period:r.period||month, base, key:k+'#'+n});
     });
   });
   return recs;
@@ -44,39 +47,62 @@ function gstRecords(capture){
 function gstCalculate(capture, settings){ return GstCore.summarizePortal(gstRecords(capture), settings.tol); }
 
 // ---------- Collecting several pages / months ----------
-// coll: {since, updated, pages:{sig:1}, recs:{key:record}}. A page (table signature) is added once,
-// and a credit seen again (same type, month, operator and amounts) replaces itself, so nothing is
-// counted twice. Returns the new collection, or null when nothing changed.
-function gstAddToCollection(coll, recs, sig, now){
-  if(!sig || !recs.length) return null;
-  const fresh = !coll || now-coll.updated>GST_COLLECTION_TTL;
-  if(!fresh && coll.pages[sig]) return null;
-  const c = fresh ? {since:now, updated:now, pages:{}, recs:{}} : {...coll, pages:{...coll.pages}, recs:{...coll.recs}};
-  c.updated = now; c.pages[sig] = 1;
-  recs.forEach(r=>{ c.recs[r.type+'|'+r.period+'|'+r.key] = r; });
-  return c;
+// Each page (table signature) is stored on its own as "gstPage:<sig>" = {at, recs}, so tabs and frames
+// saving at the same moment never overwrite each other. The collection is every page seen in the last
+// 12 hours; a credit seen on more than one page or screen (same type, month, operator, place of supply
+// and amounts) is counted once.
+var GST_PAGE_KEY = 'gstPage:';
+function gstPagesFrom(items){
+  const out = {};
+  Object.keys(items||{}).forEach(k=>{ if(k.startsWith(GST_PAGE_KEY) && items[k]) out[k.slice(GST_PAGE_KEY.length)] = items[k]; });
+  return out;
 }
-function gstCollectedRecords(coll, now){ return coll && now-coll.updated<=GST_COLLECTION_TTL ? Object.values(coll.recs) : []; }
-function gstCollectionInfo(coll, now){
-  const recs = gstCollectedRecords(coll, now);
+function gstLivePages(pages, now){ return Object.entries(pages||{}).filter(([,p])=>now-p.at<=GST_COLLECTION_TTL).sort((a,b)=>a[1].at-b[1].at); }
+// A row from a screen without a place-of-supply column (e.g. GSTR-2A) is the same credit as a
+// state-wise row with the same operator, month and amounts.
+function gstCollectedRecords(pages, now){
+  const live = gstLivePages(pages, now), by = {}, withPos = new Set();
+  live.forEach(([,p])=>p.recs.forEach(r=>{ if(r.pos){ by[r.type+'|'+r.period+'|'+r.key] = r; withPos.add(r.type+'|'+r.period+'|'+r.base); } }));
+  live.forEach(([,p])=>p.recs.forEach(r=>{ if(!r.pos && !withPos.has(r.type+'|'+r.period+'|'+r.base)) by[r.type+'|'+r.period+'|'+r.key] = r; }));
+  return Object.values(by);
+}
+function gstCollectionInfo(pages, now){
+  const live = gstLivePages(pages, now), recs = gstCollectedRecords(pages, now);
   if(!recs.length) return {rows:0, pages:0, months:'', since:''};
   const months = [...new Set(recs.map(r=>r.period).filter(Boolean))].sort().map(GstCore.periodLabel);
   return {
-    rows:recs.length, pages:Object.keys(coll.pages).length,
+    rows:recs.length, pages:live.length,
     months: months.length>2 ? months[0]+' – '+months[months.length-1]+' ('+months.length+' months)' : months.join(', '),
-    since: new Date(coll.since).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}),
+    since: new Date(live[0][1].at).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'}),
   };
+}
+// Saves a page unless it is already collected; drops pages older than 12 hours. Returns true if saved.
+function gstSavePage(pages, sig, recs, now){
+  const p = pages[sig];
+  if(!sig || !recs.length || (p && now-p.at<=GST_COLLECTION_TTL)) return false;
+  pages[sig] = {at:now, recs};
+  const old = Object.keys(pages).filter(k=>now-pages[k].at>GST_COLLECTION_TTL);
+  old.forEach(k=>{ delete pages[k]; });
+  if(old.length) chrome.storage.local.remove(old.map(k=>GST_PAGE_KEY+k));
+  chrome.storage.local.set({[GST_PAGE_KEY+sig]: pages[sig]});
+  return true;
+}
+// Clear: forget every page, then start again from the page on screen (if it is a credit page).
+async function gstClearPages(pages, sig, recs, now){
+  await chrome.storage.local.remove(Object.keys(pages).map(k=>GST_PAGE_KEY+k));
+  Object.keys(pages).forEach(k=>{ delete pages[k]; });
+  if(sig && recs && recs.length) gstSavePage(pages, sig, recs, now);
 }
 // Collected rows as portal-style tables, so the full calculator can read them like a capture.
 function gstRecordsToTables(recs){
   return ['TCS','TDS'].map(type=>{
     const rs = recs.filter(r=>r.type===type);
     if(!rs.length) return null;
-    const withGross = type==='TCS' && rs.every(r=>r.gross!=null && r.returned!=null);
+    const withGross = type==='TCS' && rs.every(r=>r.gross!=null && r.returned!=null), withPos = rs.some(r=>r.pos);
     const head = type==='TCS'
-      ? ['GSTIN of e-commerce operator','Trade name','Tax period', ...(withGross ? ['Gross value of supplies','Value of supplies returned'] : []), 'Net amount liable for TCS','Integrated tax','Central tax','State/UT tax']
-      : ['GSTIN of deductor','Deductor name','Tax period','Taxable value','Integrated tax','Central tax','State/UT tax'];
-    return [head, ...rs.map(r=>[r.gstin, r.name, r.period, ...(withGross ? [r.gross, r.returned] : []), r.net, r.igst, r.cgst, r.sgst])];
+      ? ['GSTIN of e-commerce operator','Trade name','Tax period', ...(withPos ? ['Place of supply'] : []), ...(withGross ? ['Gross value of supplies','Value of supplies returned'] : []), 'Net amount liable for TCS','Integrated tax','Central tax','State/UT tax']
+      : ['GSTIN of deductor','Deductor name','Tax period', ...(withPos ? ['Place of supply'] : []), 'Taxable value','Integrated tax','Central tax','State/UT tax'];
+    return [head, ...rs.map(r=>[r.gstin, r.name, r.period, ...(withPos ? [r.pos||''] : []), ...(withGross ? [r.gross, r.returned] : []), r.net, r.igst, r.cgst, r.sgst])];
   }).filter(Boolean);
 }
 
@@ -117,7 +143,8 @@ function gstSummaryHtml(rows, settings){
 function gstSummaryText(rows, settings){
   const r2 = n=>n==null ? '' : Math.round(n*100)/100, t = gstTotals(rows, settings);
   const out = [['Type','Operator / Deductor','GSTIN','Month','Gross value','Value returned','Net taxable','Inter-state taxable','Intra-state taxable','IGST','CGST','SGST','Credit','Rate %','Check']];
-  rows.forEach(r=>out.push([r.type, r.name, r.gstin, GstCore.periodLabel(r.period), r2(r.gross), r2(r.returned), r2(r.net), r2(r.inter), r2(r.intra), r2(r.igst), r2(r.cgst), r2(r.sgst), r2(r.tax), r2(r.effRate*100), r.check]));
+  rows.forEach(r=>out.push([r.type, r.name, r.gstin, GstCore.periodLabel(r.period), r2(r.gross), r2(r.returned), r2(r.net), r2(r.inter), r2(r.intra), r2(r.igst), r2(r.cgst), r2(r.sgst), r2(r.tax), r2(r.effRate*100),
+    r.check==='OK' && r.type==='TCS' && !r.period ? 'Rate not checked (no month)' : r.check]));
   out.push([]);
   if(t.hasTcs) out.push(['TCS taxable value (net)', r2(t.tcsNet)], ['TCS credit', r2(t.tcsTax)]);
   if(t.hasTds) out.push(['TDS taxable value', r2(t.tdsNet)], ['TDS credit', r2(t.tdsTax)]);

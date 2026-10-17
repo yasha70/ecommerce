@@ -104,6 +104,7 @@ var GstCore = (function(){
       period:[['tax','period'],['return','period'],['period'],['month']],
       fy:[['financial','year']],
       name:[['trade'],['legal','name'],['name']],
+      pos:[['place','supply'],['pos','!purpose','!deposit','!position']],
     };
     function nameType(n){ n = norm(n); return n.includes('tcs') && !n.includes('tds') ? 'TCS' : n.includes('tds') && !n.includes('tcs') ? 'TDS' : null; }
     // defFy: financial year to read bare month names with when the table has no year column
@@ -129,6 +130,7 @@ var GstCore = (function(){
             type, gstin: c.gstin>=0 ? String(r[c.gstin]).trim().toUpperCase() : '', name: c.name>=0 ? String(r[c.name]).trim() : '',
             period: c.period>=0 ? toPeriod(r[c.period], c.fy>=0 ? fyStart(r[c.fy]) : defFy||null) : null,
             gross, returned, net, igst:v(c.igst)||0, cgst:v(c.cgst)||0, sgst:v(c.sgst)||0,
+            pos: c.pos>=0 ? stateCode(r[c.pos]) || String(r[c.pos]).trim() : '',
           };
         });
       return {type, rows:recs, hasPeriod: recs.every(r=>r.period)};

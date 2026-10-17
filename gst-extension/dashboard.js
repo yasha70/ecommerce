@@ -440,6 +440,7 @@
       period:[['tax','period'],['return','period'],['period'],['month']],
       fy:[['financial','year']],
       name:[['trade'],['legal','name'],['name']],
+      pos:[['place','supply'],['pos','!purpose','!deposit','!position']],
     };
     function nameType(n){ n = norm(n); return n.includes('tcs') && !n.includes('tds') ? 'TCS' : n.includes('tds') && !n.includes('tcs') ? 'TDS' : null; }
     // defFy: financial year to read bare month names with when the table has no year column
@@ -465,6 +466,7 @@
             type, gstin: c.gstin>=0 ? String(r[c.gstin]).trim().toUpperCase() : '', name: c.name>=0 ? String(r[c.name]).trim() : '',
             period: c.period>=0 ? toPeriod(r[c.period], c.fy>=0 ? fyStart(r[c.fy]) : defFy||null) : null,
             gross, returned, net, igst:v(c.igst)||0, cgst:v(c.cgst)||0, sgst:v(c.sgst)||0,
+            pos: c.pos>=0 ? stateCode(r[c.pos]) || String(r[c.pos]).trim() : '',
           };
         });
       return {type, rows:recs, hasPeriod: recs.every(r=>r.period)};
@@ -734,11 +736,30 @@
       })));
       return out;
     };
-    gstShared.portalRecs = ()=>{
-      const out = [];
-      portalFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>out.push({...r, period:r.period||f.month||''}))));
-      return out;
-    };
+    // Portal credits from every file and capture. The same credit (type, month, operator, place of supply,
+    // amounts) in more than one of them - e.g. a page sent from the extension and later again with
+    // "All collected" - is counted once; identical rows inside one file all count. A row from a screen
+    // without a place-of-supply column is the same credit as a state-wise row with the same amounts.
+    function portalRecs(extra){
+      const sources = portalFiles.map(f=>(f.tables||[]).flatMap(t=>t.rows.map(r=>({...r, period:r.period||f.month||''}))));
+      if(extra) sources.push(extra);
+      const all = [];
+      sources.forEach(rows=>{
+        const n = {};
+        rows.forEach(r=>{
+          const base = [r.type, r.period, r.gstin, r.gross, r.returned, r.net, r.igst, r.cgst, r.sgst].join('|'), k = base+'|'+(r.pos||'');
+          all.push({r, base, key:k+'#'+(n[k] = (n[k]||0)+1)});
+        });
+      });
+      const seen = new Set(), withPos = new Set(all.filter(x=>x.r.pos).map(x=>x.base)), recs = [];
+      let dupes = 0;
+      all.forEach(x=>{
+        if(seen.has(x.key) || (!x.r.pos && withPos.has(x.base))){ dupes++; return; }
+        seen.add(x.key); recs.push(x.r);
+      });
+      return {recs, dupes};
+    }
+    gstShared.portalRecs = ()=>portalRecs().recs;
     // Tables read straight off the portal page by the browser extension (gst-extension/).
     document.addEventListener('gst:captured', e=>{
       const d = e.detail||{};
@@ -755,15 +776,15 @@
       gstRate = (parseFloat(root.querySelector('#gst-pRate').value)||0)/100;
       try{
         if(portalFiles.some(p=>!p.tables && !p.error) || reportFiles.some(p=>!p.tables && !p.error)) throw new Error('Files are still being read — try again in a moment.');
-        const recs = [];
-        portalFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>recs.push({...r, period:r.period||f.month||''}))));
+        let pastedRecs = null;
         const pasted = root.querySelector('#gst-paste').value.trim();
         if(pasted){
           const t = readPortal(Papa.parse(pasted,{skipEmptyLines:true, delimiter:pasted.includes('\t') ? '\t' : ''}).data, '', '');
           if(!t || !t.rows.length) throw new Error('Could not read the pasted table — include the header row (GSTIN, gross / net value, tax columns).');
           const month = root.querySelector('#gst-pasteMonth').value;
-          t.rows.forEach(r=>recs.push({...r, period:r.period||month||''}));
+          pastedRecs = t.rows.map(r=>({...r, period:r.period||month||''}));
         }
+        const {recs, dupes} = portalRecs(pastedRecs);
         if(!recs.length) throw new Error('Please add the GST portal TDS / TCS file (or paste the table) first.');
 
         gstPortal = summarizePortal(recs, gstTol);
@@ -782,8 +803,10 @@
         root.querySelector('#gst-eco').innerHTML = '<option value="all">All e-commerce operators</option>'+Object.entries(ecos).map(([g,n])=>`<option value="${esc(g)}"${g===ecoSel?' selected':''}>${esc(n)}${g?' ('+esc(g)+')':''}</option>`).join('');
         root.querySelector('#gst-ecoField').classList.toggle('hidden', Object.keys(ecos).length<2);
 
-        const noMonth = gstPortal.some(a=>!a.period) || ('' in gstReports);
-        if(noMonth) errBox.innerHTML = '<div class="warnbox">Some rows have no month (shown as "No month"). Set the month next to the file to place them correctly.</div>';
+        const noMonth = gstPortal.some(a=>!a.period) || ('' in gstReports), notes = [];
+        if(noMonth) notes.push('Some rows have no month (shown as "No month"). Set the month next to the file to place them correctly.');
+        if(dupes) notes.push(dupes+' credit row'+(dupes>1?'s were':' was')+' in more than one file or capture and '+(dupes>1?'were':'was')+' counted once.');
+        if(notes.length) errBox.innerHTML = notes.map(n=>'<div class="warnbox">'+n+'</div>').join('');
         renderGstResults();
       }catch(err){ errBox.innerHTML='<div class="error">'+esc(err.message)+'</div>'; }
     }

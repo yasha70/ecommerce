@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GST TDS / TCS Calculator",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Calculates the taxable amount behind the TDS and TCS credits shown on the GST portal, live on the page and across several pages or months, and matches it with your marketplace TCS reports.",
   "icons": {
     "16": "icons/icon16.png",
