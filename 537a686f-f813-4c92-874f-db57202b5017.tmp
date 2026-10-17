@@ -102,7 +102,25 @@
   .downloadlink{display:inline-block;margin-top:14px;font-size:13px;color:var(--moss-dark);text-decoration:underline;cursor:pointer;}
   .hidden{display:none;}
   .pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:10px;background:#eef2ec;color:var(--moss-dark);font-family:var(--mono);}
+
+  .section-title{font-family:var(--serif);font-size:18px;font-weight:600;margin:28px 0 12px;color:var(--moss-dark);}
+  #page-gst .fileitem{flex-wrap:wrap;gap:4px 10px;}
+  .fileitem .ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+  .fileitem select,.fileitem input,.field select{border:1px solid var(--line);border-radius:4px;padding:3px 6px;font-size:12px;font-family:var(--sans);color:var(--ink);background:#fff;}
+  .fileitem input.need{border-color:var(--rust);}
+  .field select{font-size:13.5px;padding:6px 8px;max-width:100%;}
+  details.paste{margin-top:12px;font-size:12.5px;color:#5a5f57;}
+  details.paste summary{cursor:pointer;}
+  details.paste textarea{width:100%;min-height:90px;margin-top:8px;border:1px solid var(--line);border-radius:4px;padding:8px;font-family:var(--mono);font-size:12px;}
+  details.paste .row{display:flex;align-items:center;gap:8px;margin-top:6px;}
+  details.paste input{border:1px solid var(--line);border-radius:4px;padding:3px 6px;font-size:12px;font-family:var(--sans);}
+  .warnbox{background:#fbf3e1;border:1px solid #e6cf9a;color:#7a5a12;padding:10px 14px;border-radius:5px;font-size:13px;margin-top:14px;}
+  table.datatable td.ok{color:var(--moss-dark);font-weight:600;}
+  table.datatable td.bad{color:var(--rust);font-weight:600;}
+  table.datatable td .gstin{display:block;font-family:var(--mono);font-size:11px;color:#8a8f84;}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="app-root">
@@ -114,6 +132,7 @@
       <div class="app-nav">
         <div class="app-nav-item active" data-page="size"><span class="app-nav-icon">&#128203;</span> Size Summary</div>
         <div class="app-nav-item" data-page="profit"><span class="app-nav-icon">&#8377;</span> Profit &amp; Returns</div>
+        <div class="app-nav-item" data-page="gst"><span class="app-nav-icon">&#128209;</span> GST TDS / TCS</div>
       </div>
     </div>
 
@@ -224,6 +243,81 @@
         </div>
       </div>
 
+      <!-- ============ PAGE: GST TDS / TCS ============ -->
+      <div id="page-gst" class="hidden">
+        <div class="panel-head">
+          <h1>GST TDS / TCS Reconciliation</h1>
+          <p>Upload the TDS and TCS Credit Received download from the GST portal to work out the taxable amount behind every credit, then match it month by month with your marketplace TCS reports.</p>
+        </div>
+
+        <div class="card">
+          <h2>GST portal TDS / TCS file(s) <span class="pill">required</span></h2>
+          <p class="sub">From Returns &rsaquo; TDS and TCS Credit Received (or the TDS / TCS sheets of GSTR-2A) &mdash; CSV or Excel, one or more months. Set the month for any file without a tax-period column.</p>
+          <div class="drop" id="gst-dropPortal">
+            <div class="icon">&#128194;</div>
+            <div class="hint">Click or drop the portal CSV / Excel file(s) here</div>
+            <input type="file" id="gst-filePortal" accept=".csv,.xlsx,.xls" multiple />
+          </div>
+          <div class="filelist" id="gst-portalFiles"></div>
+          <details class="paste">
+            <summary>&hellip;or paste the table copied from the portal screen</summary>
+            <textarea id="gst-paste" placeholder="Select the TCS (or TDS) table on the portal including its header row, copy, and paste it here"></textarea>
+            <div class="row"><label for="gst-pasteMonth">Month of pasted rows</label><input type="month" id="gst-pasteMonth" /></div>
+          </details>
+        </div>
+
+        <div class="card">
+          <h2>Marketplace TCS reports <span class="pill">optional</span></h2>
+          <p class="sub">Sales and sales-return reports, e.g. Meesho tcs_sales.xlsx / tcs_sales_return.xlsx (unzip the GST report first). Needs a taxable value column; the month is read from the month or date column.</p>
+          <div class="drop" id="gst-dropReports">
+            <div class="icon">&#128194;</div>
+            <div class="hint">Click or drop the sales / returns report(s) here</div>
+            <input type="file" id="gst-fileReports" accept=".csv,.xlsx,.xls" multiple />
+          </div>
+          <div class="filelist" id="gst-reportFiles"></div>
+        </div>
+
+        <div class="card">
+          <h2>Settings</h2>
+          <div class="params-row">
+            <div class="field"><label>GST rate on your sales</label><div class="row"><input type="number" id="gst-pRate" value="5" step="0.01" /><span>%</span></div></div>
+            <div class="field"><label>Match tolerance</label><div class="row"><span>&#8377;</span><input type="number" id="gst-pTol" value="10" /></div></div>
+          </div>
+        </div>
+
+        <button class="run" id="gst-runBtn">Calculate &amp; match</button>
+        <div class="errbox" id="gst-errBox"></div>
+
+        <div class="results" id="gst-results" style="display:none;">
+          <h3 class="section-title">Taxable amount from GST portal</h3>
+          <div class="summary" id="gst-portalCards"></div>
+          <div class="summary" id="gst-splitCards"></div>
+          <div class="tablewrap">
+            <table class="datatable" id="gst-portalTable">
+              <thead><tr id="gst-portalHead"></tr></thead>
+              <tbody id="gst-portalBody"></tbody>
+              <tfoot><tr id="gst-portalFoot"></tr></tfoot>
+            </table>
+          </div>
+          <p class="note">Net taxable = gross value &minus; value of supplies returned. The inter / intra-state split follows the IGST vs CGST + SGST share of each credit. Expected rate: TCS 1% up to June 2024, 0.5% from 10 July 2024 (July 2024 accepts either); TDS 2%.</p>
+
+          <div id="gst-matchSection">
+            <h3 class="section-title">Match with marketplace reports</h3>
+            <div class="field hidden" id="gst-ecoField" style="margin-bottom:14px;"><label for="gst-eco">Compare reports against</label><select id="gst-eco"></select></div>
+            <div class="summary" id="gst-matchCards"></div>
+            <div class="tablewrap">
+              <table class="datatable" id="gst-matchTable">
+                <thead><tr id="gst-matchHead"></tr></thead>
+                <tbody id="gst-matchBody"></tbody>
+                <tfoot><tr id="gst-matchFoot"></tr></tfoot>
+              </table>
+            </div>
+            <p class="note">Only TCS credits are matched. A mismatch usually means orders or returns the operator reported in a different month, or a GSTR-8 amendment &mdash; check that month's order-level report.</p>
+          </div>
+          <div class="downloadlink" id="gst-download">&#8681; Download calculation &amp; match as CSV</div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -238,8 +332,7 @@
       root.querySelectorAll('.app-nav-item').forEach(i=>i.classList.remove('active'));
       item.classList.add('active');
       const page = item.getAttribute('data-page');
-      root.querySelector('#page-size').classList.toggle('hidden', page!=='size');
-      root.querySelector('#page-profit').classList.toggle('hidden', page!=='profit');
+      ['size','profit','gst'].forEach(p=>root.querySelector('#page-'+p).classList.toggle('hidden', page!==p));
     });
   });
 
@@ -560,6 +653,401 @@
     }
 
     root.querySelector('#pf-runBtn').addEventListener('click', runProfit);
+  })();
+
+  /* =========================================================
+     GST TDS / TCS TOOL
+  ========================================================= */
+  (function(){
+    let portalFiles = [], reportFiles = [];
+    const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const GSTIN = /\b\d{2}[A-Z0-9]{13}\b/i;
+
+    function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function money(n){ return n==null ? '—' : fmtMoney(n); }
+    function pct(r){ return (r*100).toFixed(2)+'%'; }
+    function isNumCell(c){ return typeof c==='number' || /^\(?-?[₹\s]*[\d,]+(\.\d+)?\)?$/.test(String(c??'').trim()); }
+    function num(v){
+      if(typeof v==='number') return v;
+      const s = String(v??'').trim();
+      if(!isNumCell(s)) return NaN;
+      const n = parseFloat(s.replace(/[^0-9.\-]/g,''));
+      return /^\(.*\)$/.test(s) ? -n : n;
+    }
+
+    // ---------- Periods (stored as YYYY-MM) ----------
+    function ym(y,m){ return y+'-'+String(m).padStart(2,'0'); }
+    function y4(s){ return s.length===2 ? 2000+parseInt(s,10) : parseInt(s,10); }
+    function fyStart(v){ const m = String(v??'').match(/(20\d\d)\s*[-\/]\s*(\d{2,4})/); return m ? parseInt(m[1],10) : null; }
+    function toPeriod(v, fy){
+      let m;
+      if(v instanceof Date) return isNaN(v) ? null : ym(v.getFullYear(), v.getMonth()+1);
+      if(typeof v==='number' && (m = String(v).match(/^([1-9]|1[0-2])(20\d\d)$/))) return ym(+m[2], +m[1]); // 042025 stored as a number
+      if(typeof v==='number' && v>20000 && v<80000){ const d = new Date(Math.round((v-25569)*864e5)); return ym(d.getUTCFullYear(), d.getUTCMonth()+1); }
+      const s = String(v??'').trim().toLowerCase();
+      if((m = s.match(/^(0[1-9]|1[0-2])(20\d\d)$/))) return ym(+m[2], +m[1]);                    // GST return period: 042025
+      if((m = s.match(/^(20\d\d)[-\/.](\d{1,2})\b/)) && +m[2]>=1 && +m[2]<=12) return ym(+m[1], +m[2]); // 2025-04, 2025-04-12
+      if((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d\d|\d\d)\b/))){                       // 12-04-2025 (day first)
+        const mo = +m[2]<=12 ? +m[2] : +m[1];
+        return mo>=1 && mo<=12 ? ym(y4(m[3]), mo) : null;
+      }
+      if((m = s.match(/^\d{1,2}[-\s\/]([a-z]{3})[a-z]*[-\s\/,]*(20\d\d|\d\d)\b/)) && MONTHS.includes(m[1])) return ym(y4(m[2]), MONTHS.indexOf(m[1])+1); // 01-Apr-2025
+      if((m = s.match(/^([a-z]{3})[a-z]*\.?\s+\d{1,2},?\s+(20\d\d)\b/)) && MONTHS.includes(m[1])) return ym(+m[2], MONTHS.indexOf(m[1])+1);          // Apr 12, 2025
+      if((m = s.match(/^([a-z]{3})[a-z]*\.?[\s\-\/,']*(20\d\d|\d\d)?$/)) && MONTHS.includes(m[1])){ // Apr-2025, April 25, April
+        const mo = MONTHS.indexOf(m[1])+1;
+        if(m[2]) return ym(y4(m[2]), mo);
+        if(fy) return ym(mo>=4 ? fy : fy+1, mo);
+      }
+      return null;
+    }
+    function periodFromName(name){
+      const s = String(name).toLowerCase();
+      let m;
+      if((m = s.match(/(?:^|\D)(20\d\d)[-_ ]?(0[1-9]|1[0-2])(?!\d)/))) return ym(+m[1], +m[2]);
+      if((m = s.match(/(?:^|\D)(0[1-9]|1[0-2])[-_ ]?(20\d\d)(?!\d)/))) return ym(+m[2], +m[1]);
+      if((m = s.match(/(?:^|[^a-z])(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-_ ]?(20\d\d|\d\d)(?!\d)/))) return ym(y4(m[2]), MONTHS.indexOf(m[1])+1);
+      return '';
+    }
+    function periodLabel(p){ if(!p) return 'No month'; const [y,m] = p.split('-'); return MONTHS[+m-1].replace(/^./,c=>c.toUpperCase())+' '+y; }
+    // TCS u/s 52 was cut from 1% to 0.5% on 10 July 2024; TDS u/s 51 is 2%.
+    function expectedRate(type, p){
+      if(type==='TDS') return [0.02,0.02];
+      if(!p) return null;
+      return p<'2024-07' ? [0.01,0.01] : p>'2024-07' ? [0.005,0.005] : [0.005,0.01];
+    }
+
+    // ---------- Reading tables ----------
+    function readTables(file){
+      if(/\.(xlsx|xls)$/i.test(file.name)){
+        if(typeof XLSX==='undefined') return Promise.reject(new Error('Excel reader did not load — check your internet, or save the file as CSV.'));
+        return file.arrayBuffer().then(buf=>{
+          const wb = XLSX.read(buf,{type:'array', cellDates:true});
+          return wb.SheetNames.map(n=>({name:n, rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1, raw:true, defval:''})}));
+        });
+      }
+      return parseCSVFile(file).then(rows=>[{name:'', rows}]);
+    }
+    // Like colIndex, but skips columns already taken and supports "!token" exclusions.
+    function findCol(header, groups, used){
+      for(const g of groups){
+        const want = g.filter(t=>t[0]!=='!').map(norm), not = g.filter(t=>t[0]==='!').map(t=>norm(t.slice(1)));
+        for(let i=0;i<header.length;i++){
+          const cell = norm(header[i]);
+          if(!used.has(i) && cell && want.every(t=>cell.includes(t)) && !not.some(t=>cell.includes(t))) return i;
+        }
+      }
+      return -1;
+    }
+    function headerLike(row){
+      const cells = (row||[]).filter(c=>String(c??'').trim()!=='');
+      return cells.length>0 && !cells.some(c=>c instanceof Date || isNumCell(c) || GSTIN.test(String(c)));
+    }
+    // Finds the header row that matches the most columns; a second header row
+    // (e.g. "Integrated Tax / Central Tax" under a merged "Amount of tax") is merged in.
+    function locateHeader(rows, spec, ok){
+      let best = null;
+      for(let i=0;i<Math.min(rows.length,30);i++){
+        const next = rows[i+1]||[], merge = headerLike(next);
+        const header = Array.from({length:Math.max(rows[i].length, next.length)}, (_,j)=>String(rows[i][j]??'')+(merge ? ' '+String(next[j]??'') : ''));
+        const used = new Set(), cols = {};
+        Object.keys(spec).forEach(k=>{ cols[k] = findCol(header, spec[k], used); if(cols[k]>=0) used.add(cols[k]); });
+        if(!ok(cols)) continue;
+        const score = Object.values(cols).filter(i=>i>=0).length;
+        if(!best || score>best.score) best = {cols, header, start:i+(merge?2:1), score};
+      }
+      return best;
+    }
+    function isTotalRow(r){ return /^(grand)?total/.test(norm(r.find(x=>String(x??'').trim()!==''))); }
+
+    const PORTAL_COLS = {
+      gstin:[['gstin']],
+      gross:[['gross']],
+      returned:[['returned'],['supplies','return','!period']],
+      net:[['net','liable'],['net','amount'],['net','value']],
+      taxable:[['taxable'],['amount','paid']],
+      igst:[['integrated'],['igst']],
+      cgst:[['central'],['cgst']],
+      sgst:[['state','tax'],['sgst'],['ut','tax']],
+      period:[['tax','period'],['return','period'],['period'],['month']],
+      fy:[['financial','year']],
+      name:[['trade'],['legal','name'],['name']],
+    };
+    function readPortal(rows, hint){
+      const h = locateHeader(rows, PORTAL_COLS, c=>(c.gross>=0||c.net>=0||c.taxable>=0) && (c.igst>=0||c.cgst>=0||c.gstin>=0));
+      if(!h) return null;
+      const c = h.cols, joined = norm(h.header.join(' ')), hn = norm(hint);
+      const tcsHit = /gross|liable|gstr8|operator|ecommerce|collect/.test(joined), tdsHit = /deduct|gstr7/.test(joined);
+      const type = tdsHit && !tcsHit ? 'TDS' : tcsHit ? 'TCS' : (hn.includes('tds') && !hn.includes('tcs')) ? 'TDS' : 'TCS';
+      const order = type==='TCS' ? [c.net,c.taxable,c.gross] : [c.taxable,c.net,c.gross];
+      const amtCol = order.find(i=>i>=0);
+      const recs = rows.slice(h.start)
+        .filter(r=>isFinite(num(r[amtCol])) && !isTotalRow(r) && (c.gstin<0 || GSTIN.test(String(r[c.gstin]))))
+        .map(r=>{
+          const v = i=>i>=0 ? (num(r[i])||0) : null;
+          const gross = v(c.gross), returned = v(c.returned);
+          const net = order[0]>=0 || order[1]>=0 ? v(order[0]>=0 ? order[0] : order[1]) : gross-(returned||0);
+          return {
+            type, gstin: c.gstin>=0 ? String(r[c.gstin]).trim().toUpperCase() : '', name: c.name>=0 ? String(r[c.name]).trim() : '',
+            period: c.period>=0 ? toPeriod(r[c.period], c.fy>=0 ? fyStart(r[c.fy]) : null) : null,
+            gross, returned, net, igst:v(c.igst)||0, cgst:v(c.cgst)||0, sgst:v(c.sgst)||0,
+          };
+        });
+      return {type, rows:recs, hasPeriod: recs.every(r=>r.period)};
+    }
+
+    const REPORT_COLS = {
+      taxable:[['tcs','taxable'],['total','taxable','!shipping'],['taxable','value','!shipping'],['tax','exclusive'],['taxable','!shipping']],
+      tax:[['tax','amount','!taxable'],['total','tax','!taxable'],['gst','amount']],
+      rate:[['gst','rate'],['tax','rate']],
+      month:[['month','number'],['month']],
+      fy:[['financial','year']],
+      date:[['invoice','date'],['order','date'],['date']],
+      type:[['transaction','type'],['event','sub','type'],['event','type']],
+    };
+    // Month for a report row: month number + financial year (Meesho) first, then the date column.
+    function reportPeriod(r, c){
+      const od = c.date>=0 ? toPeriod(r[c.date]) : null;
+      if(c.month<0) return od;
+      const raw = String(r[c.month]??'').trim(), n = /^\d{1,2}$/.test(raw) ? parseInt(raw,10) : NaN;
+      if(!(n>=1 && n<=12)) return toPeriod(r[c.month]) || od;
+      const fy = c.fy>=0 ? r[c.fy] : '', fs = fyStart(fy);
+      if(fs) return ym(n>=4 ? fs : fs+1, n);
+      const y = parseInt((String(fy).match(/20\d\d/)||[])[0],10) || (od ? parseInt(od,10) : NaN);
+      if(!y) return od;
+      // A bare year can be calendar or financial: take the first candidate on/after the order month.
+      const cands = [y-1,y,y+1].map(x=>ym(x,n));
+      return (od && cands.find(p=>p>=od)) || ym(y,n);
+    }
+    function readReport(rows){
+      const h = locateHeader(rows, REPORT_COLS, c=>c.taxable>=0);
+      if(!h) return null;
+      const c = h.cols, recs = [];
+      rows.slice(h.start).forEach(r=>{
+        const value = num(r[c.taxable]);
+        if(!isFinite(value) || isTotalRow(r)) return;
+        const type = c.type>=0 ? norm(r[c.type]) : '';
+        if(type.includes('cancel') && !type.includes('return')) return;
+        let tax = c.tax>=0 ? num(r[c.tax]) : NaN;
+        if(!isFinite(tax) && c.rate>=0){ const rt = num(r[c.rate])||0; tax = value*(rt>1 ? rt/100 : rt); }
+        recs.push({value, tax:isFinite(tax) ? tax : 0, isReturn:/return|refund/.test(type) && !type.includes('cancel'), period:reportPeriod(r,c)});
+      });
+      return {rows:recs, hasPeriod: recs.every(r=>r.period)};
+    }
+
+    // ---------- File lists ----------
+    function addFiles(list, files, render, parse){
+      Array.from(files).forEach(async f=>{
+        if(list.some(p=>p.file.name===f.name && p.file.size===f.size)) return;
+        const item = {file:f, status:'reading...', month:periodFromName(f.name), role:/return/i.test(f.name) ? 'returns' : 'sales'};
+        list.push(item); render();
+        try{
+          const tables = (await readTables(f)).map(t=>parse(t.rows, f.name+' '+t.name)).filter(t=>t && t.rows.length);
+          if(!tables.length) throw new Error('no matching table found');
+          item.tables = tables; item.hasPeriod = tables.every(t=>t.hasPeriod);
+          item.status = describe(tables);
+        }catch(err){ item.error = true; item.status = err.message; }
+        render();
+      });
+    }
+    function describe(tables){
+      const months = new Set(), counts = {};
+      tables.forEach(t=>{ counts[t.type||'rows'] = (counts[t.type||'rows']||0)+t.rows.length; t.rows.forEach(r=>{ if(r.period) months.add(r.period); }); });
+      const m = [...months].sort();
+      const span = m.length ? ' · '+periodLabel(m[0])+(m.length>1 ? ' – '+periodLabel(m[m.length-1]) : '') : '';
+      return Object.entries(counts).map(([k,n])=>k==='rows' ? n.toLocaleString('en-IN')+' rows' : k+' · '+n+' row'+(n>1?'s':'')).join(', ')+span;
+    }
+    function bindList(listEl, list, render){
+      listEl.querySelectorAll('[data-month]').forEach(el=>el.addEventListener('change', ()=>{ list[+el.getAttribute('data-month')].month = el.value; el.classList.toggle('need', !el.value); }));
+      listEl.querySelectorAll('[data-role]').forEach(el=>el.addEventListener('change', ()=>{ list[+el.getAttribute('data-role')].role = el.value; }));
+      listEl.querySelectorAll('.remove').forEach(el=>el.addEventListener('click', ()=>{ list.splice(+el.getAttribute('data-i'),1); render(); }));
+    }
+    function monthInput(p,i){
+      return p.tables && !p.hasPeriod ? `<input type="month" data-month="${i}" value="${p.month}" class="${p.month?'':'need'}" title="Month for rows without a tax period / date" />` : '';
+    }
+    const portalListEl = root.querySelector('#gst-portalFiles'), reportListEl = root.querySelector('#gst-reportFiles');
+    function renderPortalFiles(){
+      portalListEl.innerHTML = portalFiles.map((p,i)=>`
+        <div class="fileitem"><span>${esc(p.file.name)}</span><span class="ctl">
+          <span class="status ${p.error?'err':p.tables?'done':''}">${esc(p.status)}</span>${monthInput(p,i)}
+          <span class="remove" data-i="${i}">&times;</span></span></div>`).join('');
+      bindList(portalListEl, portalFiles, renderPortalFiles);
+    }
+    function renderReportFiles(){
+      reportListEl.innerHTML = reportFiles.map((p,i)=>`
+        <div class="fileitem"><span>${esc(p.file.name)}</span><span class="ctl">
+          <select data-role="${i}"><option value="sales"${p.role==='sales'?' selected':''}>Sales</option><option value="returns"${p.role==='returns'?' selected':''}>Returns</option></select>
+          <span class="status ${p.error?'err':p.tables?'done':''}">${esc(p.status)}</span>${monthInput(p,i)}
+          <span class="remove" data-i="${i}">&times;</span></span></div>`).join('');
+      bindList(reportListEl, reportFiles, renderReportFiles);
+    }
+    const portalInput = root.querySelector('#gst-filePortal'), reportInput = root.querySelector('#gst-fileReports');
+    wireDrop(root.querySelector('#gst-dropPortal'), portalInput, files=>{ addFiles(portalFiles, files, renderPortalFiles, readPortal); portalInput.value=''; });
+    wireDrop(root.querySelector('#gst-dropReports'), reportInput, files=>{ addFiles(reportFiles, files, renderReportFiles, readReport); reportInput.value=''; });
+
+    // ---------- Calculation ----------
+    let gstPortal = [], gstReports = {}, gstTol = 10, gstRate = 0.05, ecoSel = 'all';
+
+    function runGst(){
+      const errBox = root.querySelector('#gst-errBox'); errBox.innerHTML='';
+      gstTol = Math.abs(parseFloat(root.querySelector('#gst-pTol').value)||0);
+      gstRate = (parseFloat(root.querySelector('#gst-pRate').value)||0)/100;
+      try{
+        if(portalFiles.some(p=>!p.tables && !p.error) || reportFiles.some(p=>!p.tables && !p.error)) throw new Error('Files are still being read — try again in a moment.');
+        const recs = [];
+        portalFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>recs.push({...r, period:r.period||f.month||''}))));
+        const pasted = root.querySelector('#gst-paste').value.trim();
+        if(pasted){
+          const t = readPortal(Papa.parse(pasted,{skipEmptyLines:true, delimiter:pasted.includes('\t') ? '\t' : ''}).data, 'pasted');
+          if(!t || !t.rows.length) throw new Error('Could not read the pasted table — include the header row (GSTIN, gross / net value, tax columns).');
+          const month = root.querySelector('#gst-pasteMonth').value;
+          t.rows.forEach(r=>recs.push({...r, period:r.period||month||''}));
+        }
+        if(!recs.length) throw new Error('Please add the GST portal TDS / TCS file (or paste the table) first.');
+
+        // One line per credit type + operator/deductor + month (POS-wise rows are added together).
+        const by = {};
+        recs.forEach(r=>{
+          const k = r.type+'|'+r.gstin+'|'+r.period;
+          const a = by[k] || (by[k] = {type:r.type, gstin:r.gstin, name:r.name, period:r.period, gross:null, returned:null, net:0, igst:0, cgst:0, sgst:0});
+          if(r.gross!=null) a.gross = (a.gross||0)+r.gross;
+          if(r.returned!=null) a.returned = (a.returned||0)+r.returned;
+          a.net += r.net; a.igst += r.igst; a.cgst += r.cgst; a.sgst += r.sgst;
+          if(!a.name) a.name = r.name;
+        });
+        gstPortal = Object.values(by).map(a=>{
+          const tax = a.igst+a.cgst+a.sgst, rate = expectedRate(a.type, a.period), issues = [];
+          const inter = tax ? a.net*a.igst/tax : null;
+          if(a.gross!=null && a.returned!=null && Math.abs(a.gross-a.returned-a.net)>gstTol) issues.push('Net ≠ gross − returned');
+          if(rate && (tax<a.net*rate[0]-gstTol || tax>a.net*rate[1]+gstTol)) issues.push('Rate '+pct(a.net ? tax/a.net : 0)+' (expected '+(rate[0]===rate[1] ? pct(rate[0]) : pct(rate[0])+'–'+pct(rate[1]))+')');
+          return {...a, tax, inter, intra: inter==null ? null : a.net-inter, effRate: a.net ? tax/a.net : 0, check: issues.join('; ') || 'OK'};
+        }).sort((x,y)=>x.period.localeCompare(y.period) || x.type.localeCompare(y.type) || x.name.localeCompare(y.name));
+
+        gstReports = {};
+        reportFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>{
+          const p = r.period||f.month||'';
+          const m = gstReports[p] || (gstReports[p] = {sales:0, returns:0, tax:0});
+          if(f.role==='returns' || r.value<0 || r.isReturn){ m.returns += Math.abs(r.value); m.tax -= Math.abs(r.tax); }
+          else { m.sales += r.value; m.tax += r.tax; }
+        })));
+
+        const ecos = {};
+        gstPortal.filter(a=>a.type==='TCS').forEach(a=>{ ecos[a.gstin] = a.name || a.gstin || 'Operator'; });
+        if(ecoSel!=='all' && !(ecoSel in ecos)) ecoSel = 'all';
+        root.querySelector('#gst-eco').innerHTML = '<option value="all">All e-commerce operators</option>'+Object.entries(ecos).map(([g,n])=>`<option value="${esc(g)}"${g===ecoSel?' selected':''}>${esc(n)}${g?' ('+esc(g)+')':''}</option>`).join('');
+        root.querySelector('#gst-ecoField').classList.toggle('hidden', Object.keys(ecos).length<2);
+
+        const noMonth = gstPortal.some(a=>!a.period) || ('' in gstReports);
+        if(noMonth) errBox.innerHTML = '<div class="warnbox">Some rows have no month (shown as "No month"). Set the month next to the file to place them correctly.</div>';
+        renderGstResults();
+      }catch(err){ errBox.innerHTML='<div class="error">'+esc(err.message)+'</div>'; }
+    }
+
+    function matchRows(){
+      const portal = {};
+      gstPortal.filter(a=>a.type==='TCS' && (ecoSel==='all' || a.gstin===ecoSel)).forEach(a=>{
+        const m = portal[a.period] || (portal[a.period] = {gross:0, returned:0, net:0, tax:0, hasGross:false});
+        m.gross += a.gross||0; m.returned += a.returned||0; m.net += a.net; m.tax += a.tax; m.hasGross = m.hasGross || a.gross!=null;
+      });
+      const months = [...new Set([...Object.keys(portal), ...Object.keys(gstReports)])].sort();
+      return months.map(period=>{
+        const p = portal[period], r = gstReports[period], rate = expectedRate('TCS', period);
+        const rNet = r ? r.sales-r.returns : null;
+        const diff = p && r ? p.net-rNet : null;
+        let status = 'Matched';
+        if(!p) status = 'Not in portal';
+        else if(!r) status = 'No report';
+        else if(Math.abs(diff)>gstTol) status = 'Value mismatch';
+        else if(rate && (p.tax<rNet*rate[0]-gstTol || p.tax>rNet*rate[1]+gstTol)) status = 'TCS mismatch';
+        return {
+          period, pGross:p && p.hasGross ? p.gross : null, rSales:r ? r.sales : null, pReturned:p && p.hasGross ? p.returned : null, rReturns:r ? r.returns : null,
+          pNet:p ? p.net : null, rNet, diff, pTax:p ? p.tax : null, eTax:r && rate ? rNet*(rate[0]+rate[1])/2 : null,
+          eTaxLabel:r && rate ? (rate[0]===rate[1] ? fmtMoney(rNet*rate[0]) : fmtMoney(rNet*rate[0])+'–'+fmtMoney(rNet*rate[1])) : '—',
+          rTax:r ? r.tax : null, status,
+        };
+      });
+    }
+
+    function cards(el, list){ el.innerHTML = list.map(c=>`<div class="stat ${c.cls||''}"><div class="label">${c.label}</div><div class="value">${c.value}</div></div>`).join(''); }
+
+    function renderGstResults(){
+      root.querySelector('#gst-results').style.display='block';
+      const sum = (rows,k)=>rows.reduce((s,r)=>s+(r[k]||0),0);
+      const tcs = gstPortal.filter(a=>a.type==='TCS'), tds = gstPortal.filter(a=>a.type==='TDS');
+      cards(root.querySelector('#gst-portalCards'), [
+        {label:'TCS taxable value (net)', value:fmtMoney(sum(tcs,'net')), cls:'profit'},
+        {label:'TCS credit', value:fmtMoney(sum(tcs,'tax'))},
+        {label:'TDS taxable value', value:fmtMoney(sum(tds,'net')), cls:'profit'},
+        {label:'TDS credit', value:fmtMoney(sum(tds,'tax'))},
+      ]);
+      const inter = sum(gstPortal,'inter'), intra = sum(gstPortal,'intra'), rateLbl = +(gstRate*100).toFixed(2)+'%';
+      cards(root.querySelector('#gst-splitCards'), [
+        {label:'Inter-state taxable (IGST)', value:fmtMoney(inter)},
+        {label:'Intra-state taxable (CGST+SGST)', value:fmtMoney(intra)},
+        {label:'Est. IGST payable @ '+rateLbl, value:fmtMoney(inter*gstRate)},
+        {label:'Est. CGST & SGST payable (each)', value:fmtMoney(intra*gstRate/2)},
+      ]);
+
+      const pCols=[{key:'type',label:'Type'},{key:'name',label:'Operator / Deductor'},{key:'period',label:'Month'},{key:'gross',label:'Gross value'},{key:'returned',label:'Returned'},
+        {key:'net',label:'Net taxable'},{key:'inter',label:'Inter-state'},{key:'intra',label:'Intra-state'},{key:'tax',label:'Credit (tax)'},{key:'effRate',label:'Rate'},{key:'check',label:'Check'}];
+      sortableTable(
+        root.querySelector('#gst-portalHead'), root.querySelector('#gst-portalBody'), root.querySelector('#gst-portalFoot'),
+        pCols, ()=>gstPortal,
+        r=>`<tr><td>${r.type}</td><td>${esc(r.name||'—')}<span class="gstin">${esc(r.gstin)}</span></td><td>${periodLabel(r.period)}</td>
+          <td class="num">${money(r.gross)}</td><td class="num">${money(r.returned)}</td><td class="num">${fmtMoney(r.net)}</td>
+          <td class="num">${money(r.inter)}</td><td class="num">${money(r.intra)}</td><td class="num">${fmtMoney(r.tax)}</td>
+          <td class="num">${pct(r.effRate)}</td><td class="${r.check==='OK'?'ok':'bad'}">${esc(r.check)}</td></tr>`,
+        data=>`<td>TOTAL</td><td></td><td></td><td class="num">${fmtMoney(sum(data,'gross'))}</td><td class="num">${fmtMoney(sum(data,'returned'))}</td>
+          <td class="num">${fmtMoney(sum(data,'net'))}</td><td class="num">${fmtMoney(sum(data,'inter'))}</td><td class="num">${fmtMoney(sum(data,'intra'))}</td>
+          <td class="num">${fmtMoney(sum(data,'tax'))}</td><td></td><td>${data.filter(r=>r.check!=='OK').length} to check</td>`,
+        {key:'period', dir:1}
+      ).draw();
+
+      const hasReports = Object.keys(gstReports).length>0;
+      root.querySelector('#gst-matchSection').classList.toggle('hidden', !hasReports);
+      if(hasReports) renderMatch();
+    }
+
+    function renderMatch(){
+      const rows = matchRows(), sum = k=>rows.reduce((s,r)=>s+(r[k]||0),0);
+      const both = rows.filter(r=>r.diff!=null), matched = rows.filter(r=>r.status==='Matched').length, diff = sum('diff');
+      cards(root.querySelector('#gst-matchCards'), [
+        {label:'Reports net taxable', value:fmtMoney(sum('rNet')), cls:'profit'},
+        {label:'Portal − reports (common months)', value:fmtMoney(diff), cls:Math.abs(diff)>gstTol?'warn':''},
+        {label:'Months matched (in both)', value:matched+' / '+both.length, cls:matched<both.length?'warn':''},
+        {label:'GST in reports (net)', value:fmtMoney(sum('rTax'))},
+      ]);
+      const mCols=[{key:'period',label:'Month'},{key:'pGross',label:'Portal gross'},{key:'rSales',label:'Report sales'},{key:'pReturned',label:'Portal returned'},{key:'rReturns',label:'Report returns'},
+        {key:'pNet',label:'Portal net'},{key:'rNet',label:'Report net'},{key:'diff',label:'Difference'},{key:'pTax',label:'Portal TCS'},{key:'eTax',label:'Expected TCS'},{key:'status',label:'Status'}];
+      sortableTable(
+        root.querySelector('#gst-matchHead'), root.querySelector('#gst-matchBody'), root.querySelector('#gst-matchFoot'),
+        mCols, ()=>rows,
+        r=>`<tr><td>${periodLabel(r.period)}</td><td class="num">${money(r.pGross)}</td><td class="num">${money(r.rSales)}</td><td class="num">${money(r.pReturned)}</td><td class="num">${money(r.rReturns)}</td>
+          <td class="num">${money(r.pNet)}</td><td class="num">${money(r.rNet)}</td><td class="num ${r.diff!=null && Math.abs(r.diff)>gstTol?'neg':''}">${money(r.diff)}</td>
+          <td class="num">${money(r.pTax)}</td><td class="num">${r.eTaxLabel}</td><td class="${r.status==='Matched'?'ok':'bad'}">${r.status}</td></tr>`,
+        data=>`<td>TOTAL</td><td class="num">${fmtMoney(sum('pGross'))}</td><td class="num">${fmtMoney(sum('rSales'))}</td><td class="num">${fmtMoney(sum('pReturned'))}</td><td class="num">${fmtMoney(sum('rReturns'))}</td>
+          <td class="num">${fmtMoney(sum('pNet'))}</td><td class="num">${fmtMoney(sum('rNet'))}</td><td class="num">${fmtMoney(both.reduce((s,r)=>s+r.diff,0))}</td>
+          <td class="num">${fmtMoney(sum('pTax'))}</td><td></td><td>${matched} matched</td>`,
+        {key:'period', dir:1}
+      ).draw();
+    }
+
+    root.querySelector('#gst-eco').addEventListener('change', e=>{ ecoSel = e.target.value; renderMatch(); });
+    root.querySelector('#gst-download').addEventListener('click', ()=>{
+      const r2 = n=>n==null ? '' : Math.round(n*100)/100;
+      const a = [['Type','GSTIN','Name','Month','Gross value','Value returned','Net taxable','Inter-state taxable','Intra-state taxable','IGST','CGST','SGST','Total tax','Rate %','Check']];
+      gstPortal.forEach(r=>a.push([r.type,r.gstin,r.name,r.period,r2(r.gross),r2(r.returned),r2(r.net),r2(r.inter),r2(r.intra),r2(r.igst),r2(r.cgst),r2(r.sgst),r2(r.tax),r2(r.effRate*100),r.check]));
+      let csv = Papa.unparse(a);
+      if(Object.keys(gstReports).length){
+        const b = [['Month','Portal gross','Report sales','Portal returned','Report returns','Portal net taxable','Report net taxable','Difference','Portal TCS','Expected TCS','Report GST','Status']];
+        matchRows().forEach(r=>b.push([r.period,r2(r.pGross),r2(r.rSales),r2(r.pReturned),r2(r.rReturns),r2(r.pNet),r2(r.rNet),r2(r.diff),r2(r.pTax),r2(r.eTax),r2(r.rTax),r.status]));
+        csv += '\n\n'+Papa.unparse(b);
+      }
+      const blob = new Blob([csv],{type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement('a'); el.href=url; el.download='gst_tds_tcs_reconciliation.csv'; el.click();
+      URL.revokeObjectURL(url);
+    });
+    root.querySelector('#gst-runBtn').addEventListener('click', runGst);
   })();
 
 })();
