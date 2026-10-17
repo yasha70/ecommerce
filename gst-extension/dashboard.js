@@ -1,328 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Order Tools — Blouse Business Dashboard</title>
-<style>
-  :root{
-    --ink:#1f2420; --paper:#f7f5ef; --panel:#ffffff; --line:#dcd8cc;
-    --moss:#3c5a44; --moss-dark:#2a4130; --rust:#a6432f; --gold:#b6862c;
-    --mono:'IBM Plex Mono','SF Mono',monospace; --serif:'Source Serif Pro',Georgia,serif; --sans:'Inter',-apple-system,sans-serif;
-  }
-  *{box-sizing:border-box;}
-  .app-root{font-family:var(--sans);background:var(--paper);color:var(--ink);min-height:100%;}
-  .app-shell{display:flex;min-height:100vh;}
-
-  .app-sidebar{
-    width:220px;flex:0 0 220px;background:var(--moss-dark);color:#eef0ea;
-    padding:26px 18px;position:sticky;top:0;height:100vh;
-  }
-  .app-brand{font-family:var(--serif);font-size:19px;font-weight:600;margin-bottom:4px;color:#fff;}
-  .app-brand-sub{font-size:11.5px;color:#9db2a1;margin-bottom:26px;}
-  .app-nav-item{
-    display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;
-    font-size:13.5px;font-weight:600;cursor:pointer;color:#cfd9cf;margin-bottom:4px;
-    transition:background .15s,color .15s;
-  }
-  .app-nav-item:hover{background:#33503c;color:#fff;}
-  .app-nav-item.active{background:#fff;color:var(--moss-dark);}
-  .app-nav-icon{font-size:16px;width:20px;text-align:center;}
-
-  .app-main{flex:1;padding:32px 36px 60px;max-width:980px;}
-  @media (max-width:820px){
-    .app-shell{flex-direction:column;}
-    .app-sidebar{width:100%;flex:none;height:auto;position:static;padding:18px 20px;}
-    .app-nav{display:flex;gap:8px;overflow-x:auto;}
-    .app-nav-item{white-space:nowrap;}
-    .app-main{padding:24px 18px 50px;}
-  }
-
-  .panel-head{margin-bottom:24px;border-bottom:2px solid var(--ink);padding-bottom:14px;}
-  .panel-head h1{font-family:var(--serif);font-size:25px;font-weight:600;margin:0 0 6px;letter-spacing:-0.01em;}
-  .panel-head p{margin:0;color:#5a5f57;font-size:14px;max-width:600px;}
-
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px 20px;margin-bottom:18px;}
-  .card h2{font-size:14px;font-weight:600;margin:0 0 4px;color:var(--moss-dark);}
-  .card .sub{font-size:12.5px;color:#7a7f76;margin:0 0 14px;}
-
-  .tabs{display:flex;gap:8px;margin-bottom:0;}
-  .tab{padding:9px 16px;border:1px solid var(--line);border-radius:6px 6px 0 0;background:#eeece3;color:#6a6f66;font-size:13px;font-weight:600;cursor:pointer;border-bottom:none;}
-  .tab.active{background:var(--panel);color:var(--moss-dark);border-bottom:2px solid var(--panel);position:relative;top:1px;}
-
-  .drop{border:1.5px dashed var(--line);border-radius:5px;padding:22px 14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:#fbfaf6;}
-  .drop:hover,.drop.drag{border-color:var(--moss);background:#f2f6f0;}
-  .drop input{display:none;}
-  .drop .fname{font-size:13px;color:var(--moss-dark);font-weight:600;margin-top:6px;word-break:break-all;}
-  .drop .hint{font-size:12px;color:#8a8f84;margin-top:4px;}
-  .drop .icon{font-size:22px;opacity:.5;}
-
-  .filelist{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
-  .fileitem{display:flex;align-items:center;justify-content:space-between;background:#f4f6f2;border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-size:12.5px;}
-  .fileitem .status{font-family:var(--mono);font-size:11px;color:#8a8f84;}
-  .fileitem .status.done{color:var(--moss-dark);}
-  .fileitem .status.err{color:var(--rust);}
-  .fileitem .remove{cursor:pointer;color:#b0968f;font-weight:700;margin-left:8px;}
-
-  .params-row{display:flex;gap:20px;flex-wrap:wrap;}
-  .field{display:flex;flex-direction:column;gap:5px;min-width:150px;}
-  .field label{font-size:12px;color:#5a5f57;}
-  .field .row{display:flex;align-items:center;gap:6px;}
-  .field .row span{color:#8a8f84;font-size:13px;}
-  .field input{border:1px solid var(--line);border-radius:4px;padding:7px 9px;font-size:14px;width:88px;font-family:var(--sans);color:var(--ink);}
-  .field input:focus{outline:2px solid var(--moss);outline-offset:1px;}
-
-  .run{display:inline-flex;align-items:center;gap:8px;background:var(--moss);color:#fff;border:none;padding:11px 22px;border-radius:5px;font-size:14.5px;font-weight:600;cursor:pointer;transition:background .15s;margin-top:14px;}
-  .run:hover{background:var(--moss-dark);}
-  .run:disabled{background:#b7bcb2;cursor:not-allowed;}
-
-  .errbox .error{background:#fbe9e6;border:1px solid #e3b3a8;color:var(--rust);padding:10px 14px;border-radius:5px;font-size:13px;margin-top:14px;}
-
-  .results{margin-top:26px;}
-  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
-  @media (max-width:720px){.summary{grid-template-columns:repeat(2,1fr);}}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;}
-  .stat .label{font-size:11.5px;color:#7a7f76;margin-bottom:6px;}
-  .stat .value{font-family:var(--serif);font-size:21px;font-weight:600;}
-  .stat.profit .value{color:var(--moss-dark);}
-  .stat.warn .value{color:var(--rust);}
-
-  .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:auto;max-height:520px;}
-  table.datatable{width:100%;border-collapse:collapse;font-size:13px;}
-  table.datatable thead th{position:sticky;top:0;background:var(--moss-dark);color:#fff;text-align:left;padding:10px 12px;font-weight:600;font-size:12px;cursor:pointer;user-select:none;white-space:nowrap;}
-  table.datatable thead th:hover{background:var(--moss);}
-  table.datatable thead th .arrow{opacity:.6;font-size:10px;margin-left:4px;}
-  table.datatable td{padding:9px 12px;border-bottom:1px solid #ece9de;white-space:nowrap;}
-  table.datatable tbody tr:hover{background:#f4f6f2;}
-  table.datatable td.num{text-align:right;font-family:var(--mono);font-size:12.5px;}
-  table.datatable td.neg{color:var(--rust);}
-  table.datatable tfoot td{font-weight:700;border-top:2px solid var(--ink);background:#f1efe6;}
-
-  .note{font-size:12px;color:#8a8f84;margin-top:10px;}
-  .downloadlink{display:inline-block;margin-top:14px;font-size:13px;color:var(--moss-dark);text-decoration:underline;cursor:pointer;}
-  .hidden{display:none;}
-  .pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:10px;background:#eef2ec;color:var(--moss-dark);font-family:var(--mono);}
-
-  .section-title{font-family:var(--serif);font-size:18px;font-weight:600;margin:28px 0 12px;color:var(--moss-dark);}
-  #page-gst .fileitem{flex-wrap:wrap;gap:4px 10px;}
-  .fileitem .ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
-  .fileitem select,.fileitem input,.field select{border:1px solid var(--line);border-radius:4px;padding:3px 6px;font-size:12px;font-family:var(--sans);color:var(--ink);background:#fff;}
-  .fileitem input.need{border-color:var(--rust);}
-  .field select{font-size:13.5px;padding:6px 8px;max-width:100%;}
-  details.paste{margin-top:12px;font-size:12.5px;color:#5a5f57;}
-  details.paste summary{cursor:pointer;}
-  details.paste textarea{width:100%;min-height:90px;margin-top:8px;border:1px solid var(--line);border-radius:4px;padding:8px;font-family:var(--mono);font-size:12px;}
-  details.paste .row{display:flex;align-items:center;gap:8px;margin-top:6px;}
-  details.paste input{border:1px solid var(--line);border-radius:4px;padding:3px 6px;font-size:12px;font-family:var(--sans);}
-  .warnbox{background:#fbf3e1;border:1px solid #e6cf9a;color:#7a5a12;padding:10px 14px;border-radius:5px;font-size:13px;margin-top:14px;}
-  table.datatable td.ok{color:var(--moss-dark);font-weight:600;}
-  table.datatable td.bad{color:var(--rust);font-weight:600;}
-  table.datatable td .gstin{display:block;font-family:var(--mono);font-size:11px;color:#8a8f84;}
-</style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-</head>
-<body>
-<div class="app-root">
-  <div class="app-shell">
-
-    <div class="app-sidebar">
-      <div class="app-brand">Order Tools</div>
-      <div class="app-brand-sub">Blouse business dashboard</div>
-      <div class="app-nav">
-        <div class="app-nav-item active" data-page="size"><span class="app-nav-icon">&#128203;</span> Size Summary</div>
-        <div class="app-nav-item" data-page="profit"><span class="app-nav-icon">&#8377;</span> Profit &amp; Returns</div>
-        <div class="app-nav-item" data-page="gst"><span class="app-nav-icon">&#128209;</span> GST TDS / TCS</div>
-      </div>
-    </div>
-
-    <div class="app-main">
-
-      <!-- ============ PAGE: SIZE SUMMARY ============ -->
-      <div id="page-size">
-        <div class="panel-head">
-          <h1>SKU × Size Summary</h1>
-          <p>Upload an orders CSV, or a picklist screenshot/PDF from any supplier — either way you get every size grouped into L (26–30), XL (32–34), XXL (36–40) and counted per SKU.</p>
-        </div>
-
-        <div class="tabs">
-          <div class="tab active" data-szTab="csv">Orders CSV</div>
-          <div class="tab" data-szTab="picklist">Picklist screenshot / PDF</div>
-        </div>
-
-        <div class="card" id="sz-tabCsv">
-          <h2>Orders file</h2>
-          <p class="sub">Needs columns: SKU and Size (Quantity used too if present)</p>
-          <div class="drop" id="sz-dropOrders">
-            <div class="icon">&#128194;</div>
-            <div class="hint">Click or drop the Orders CSV here</div>
-            <div class="fname" id="sz-fnameOrders"></div>
-            <input type="file" id="sz-fileOrders" accept=".csv" />
-          </div>
-        </div>
-
-        <div class="card hidden" id="sz-tabPicklist">
-          <h2>Picklist screenshot(s) or PDF(s)</h2>
-          <p class="sub">Drop one or more picklist images/PDFs (SKU / Color / Size / Total Quantity table) — each is read automatically.</p>
-          <div class="drop" id="sz-dropPicklist">
-            <div class="icon">&#128248;</div>
-            <div class="hint">Click or drop picklist image(s)/PDF(s) here</div>
-            <input type="file" id="sz-filePicklist" accept=".png,.jpg,.jpeg,.pdf" multiple />
-          </div>
-          <div class="filelist" id="sz-picklistFiles"></div>
-        </div>
-
-        <button class="run" id="sz-runBtn">Summarize</button>
-        <div class="errbox" id="sz-errBox"></div>
-
-        <div class="results" id="sz-results" style="display:none;">
-          <div class="summary" id="sz-summaryCards"></div>
-          <div class="tablewrap">
-            <table class="datatable" id="sz-skuTable">
-              <thead><tr id="sz-tableHead"></tr></thead>
-              <tbody id="sz-tableBody"></tbody>
-              <tfoot><tr id="sz-tableFoot"></tr></tfoot>
-            </table>
-          </div>
-          <div class="downloadlink" id="sz-downloadCsv">&#8681; Download this summary as CSV</div>
-          <p class="note">Free-Size:30&ndash;34 counted as XL, Free-Size:36&ndash;40 as XXL &middot; "Alterable" ignored for grouping.</p>
-        </div>
-      </div>
-
-      <!-- ============ PAGE: PROFIT & RETURNS ============ -->
-      <div id="page-profit" class="hidden">
-        <div class="panel-head">
-          <h1>Order Profit &amp; Return Calculator</h1>
-          <p>Upload your orders export and (optionally) a returns report. Works out combo size from the product name, real delivered profit, and per-SKU customer-return rate.</p>
-        </div>
-
-        <div class="card">
-          <h2>Orders file <span class="pill">required</span></h2>
-          <p class="sub">Needs: SKU, Product Name, Reason for Credit Entry, Supplier Discounted Price</p>
-          <div class="drop" id="pf-dropOrders">
-            <div class="icon">&#128194;</div>
-            <div class="hint">Click or drop the Orders CSV here</div>
-            <div class="fname" id="pf-fnameOrders"></div>
-            <input type="file" id="pf-fileOrders" accept=".csv" />
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>Returns file <span class="pill">optional</span></h2>
-          <p class="sub">Needs: SKU, Type of Return, Sub Type — header row auto-detected</p>
-          <div class="drop" id="pf-dropReturns">
-            <div class="icon">&#128194;</div>
-            <div class="hint">Click or drop the Returns CSV here</div>
-            <div class="fname" id="pf-fnameReturns"></div>
-            <input type="file" id="pf-fileReturns" accept=".csv" />
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>Cost assumptions</h2>
-          <div class="params-row">
-            <div class="field"><label>Cost per blouse</label><div class="row"><span>&#8377;</span><input type="number" id="pf-pBlouse" value="42" /></div></div>
-            <div class="field"><label>Fixed cost per order</label><div class="row"><span>&#8377;</span><input type="number" id="pf-pFixed" value="45" /></div></div>
-            <div class="field"><label>Customer return charge</label><div class="row"><span>&#8377;</span><input type="number" id="pf-pReturn" value="157" /></div></div>
-          </div>
-        </div>
-
-        <button class="run" id="pf-runBtn">Calculate profit</button>
-        <div class="errbox" id="pf-errBox"></div>
-
-        <div class="results" id="pf-results" style="display:none;">
-          <div class="summary" id="pf-summaryCards"></div>
-          <div class="tablewrap">
-            <table class="datatable" id="pf-skuTable">
-              <thead><tr id="pf-tableHead"></tr></thead>
-              <tbody id="pf-tableBody"></tbody>
-              <tfoot><tr id="pf-tableFoot"></tr></tfoot>
-            </table>
-          </div>
-          <p class="note">Profit is calculated only on DELIVERED orders. RTO/courier-return rows are never charged unless your Returns file marks them as "Customer Return".</p>
-        </div>
-      </div>
-
-      <!-- ============ PAGE: GST TDS / TCS ============ -->
-      <div id="page-gst" class="hidden">
-        <div class="panel-head">
-          <h1>GST TDS / TCS Reconciliation</h1>
-          <p>Upload the TDS and TCS Credit Received download from the GST portal to work out the taxable amount behind every credit, then match it month by month with your marketplace TCS reports.</p>
-        </div>
-
-        <div class="card">
-          <h2>GST portal TDS / TCS file(s) <span class="pill">required</span></h2>
-          <p class="sub">From Returns &rsaquo; TDS and TCS Credit Received (or the TDS / TCS sheets of GSTR-2A) &mdash; CSV or Excel, one or more months. Set the month for any file without a tax-period column.</p>
-          <div class="drop" id="gst-dropPortal">
-            <div class="icon">&#128194;</div>
-            <div class="hint">Click or drop the portal CSV / Excel file(s) here</div>
-            <input type="file" id="gst-filePortal" accept=".csv,.xlsx,.xls" multiple />
-          </div>
-          <div class="filelist" id="gst-portalFiles"></div>
-          <details class="paste">
-            <summary>&hellip;or paste the table copied from the portal screen</summary>
-            <textarea id="gst-paste" placeholder="Select the TCS (or TDS) table on the portal including its header row, copy, and paste it here"></textarea>
-            <div class="row"><label for="gst-pasteMonth">Month of pasted rows</label><input type="month" id="gst-pasteMonth" /></div>
-          </details>
-        </div>
-
-        <div class="card">
-          <h2>Marketplace TCS reports <span class="pill">optional</span></h2>
-          <p class="sub">Sales and sales-return reports, e.g. Meesho tcs_sales.xlsx / tcs_sales_return.xlsx (unzip the GST report first). Needs a taxable value column; the month is read from the month or date column.</p>
-          <div class="drop" id="gst-dropReports">
-            <div class="icon">&#128194;</div>
-            <div class="hint">Click or drop the sales / returns report(s) here</div>
-            <input type="file" id="gst-fileReports" accept=".csv,.xlsx,.xls" multiple />
-          </div>
-          <div class="filelist" id="gst-reportFiles"></div>
-        </div>
-
-        <div class="card">
-          <h2>Settings</h2>
-          <div class="params-row">
-            <div class="field"><label>GST rate on your sales</label><div class="row"><input type="number" id="gst-pRate" value="5" step="0.01" /><span>%</span></div></div>
-            <div class="field"><label>Match tolerance</label><div class="row"><span>&#8377;</span><input type="number" id="gst-pTol" value="10" /></div></div>
-          </div>
-        </div>
-
-        <button class="run" id="gst-runBtn">Calculate &amp; match</button>
-        <div class="errbox" id="gst-errBox"></div>
-
-        <div class="results" id="gst-results" style="display:none;">
-          <h3 class="section-title">Taxable amount from GST portal</h3>
-          <div class="summary" id="gst-portalCards"></div>
-          <div class="summary" id="gst-splitCards"></div>
-          <div class="tablewrap">
-            <table class="datatable" id="gst-portalTable">
-              <thead><tr id="gst-portalHead"></tr></thead>
-              <tbody id="gst-portalBody"></tbody>
-              <tfoot><tr id="gst-portalFoot"></tr></tfoot>
-            </table>
-          </div>
-          <p class="note">Net taxable = gross value &minus; value of supplies returned. The inter / intra-state split follows the IGST vs CGST + SGST share of each credit. Expected rate: TCS 1% up to June 2024, 0.5% from 10 July 2024 (July 2024 accepts either); TDS 2%.</p>
-
-          <div id="gst-matchSection">
-            <h3 class="section-title">Match with marketplace reports</h3>
-            <div class="field hidden" id="gst-ecoField" style="margin-bottom:14px;"><label for="gst-eco">Compare reports against</label><select id="gst-eco"></select></div>
-            <div class="summary" id="gst-matchCards"></div>
-            <div class="tablewrap">
-              <table class="datatable" id="gst-matchTable">
-                <thead><tr id="gst-matchHead"></tr></thead>
-                <tbody id="gst-matchBody"></tbody>
-                <tfoot><tr id="gst-matchFoot"></tr></tfoot>
-              </table>
-            </div>
-            <p class="note">Only TCS credits are matched. A mismatch usually means orders or returns the operator reported in a different month, or a GSTR-8 amendment &mdash; check that month's order-level report.</p>
-          </div>
-          <div class="downloadlink" id="gst-download">&#8681; Download calculation &amp; match as CSV</div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-<script>
+// Generated by gst-extension/build.js from index.html. Edit index.html, then run: node gst-extension/build.js
 (function(){
   const root = document.currentScript.parentElement;
 
@@ -717,15 +393,22 @@
     }
 
     // ---------- Reading tables ----------
-    function readTables(file){
-      if(/\.(xlsx|xls)$/i.test(file.name)){
-        if(typeof XLSX==='undefined') return Promise.reject(new Error('Excel reader did not load — check your internet, or save the file as CSV.'));
-        return file.arrayBuffer().then(buf=>{
-          const wb = XLSX.read(buf,{type:'array', cellDates:true});
-          return wb.SheetNames.map(n=>({name:n, rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1, raw:true, defval:''})}));
-        });
-      }
-      return parseCSVFile(file).then(rows=>[{name:'', rows}]);
+    function needXLSX(){ if(typeof XLSX==='undefined') throw new Error('Excel reader did not load — check your internet, or save the file as CSV.'); }
+    function readTables(name, bytes){
+      if(/\.csv$/i.test(name)) return [{name:'', rows:Papa.parse(new TextDecoder().decode(bytes),{skipEmptyLines:true}).data}];
+      needXLSX();
+      const wb = XLSX.read(bytes,{type:'array', cellDates:true});
+      return wb.SheetNames.map(n=>({name:n, rows:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1, raw:true, defval:''})}));
+    }
+    // One source per file; a ZIP (Meesho GST report, GSTR-2A Excel download) gives one source per sheet file inside it.
+    async function fileSources(f){
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if(!/\.zip$/i.test(f.name)) return [{name:f.name, size:f.size, load:()=>readTables(f.name, bytes)}];
+      needXLSX();
+      let entries = XLSX.CFB.read(bytes,{type:'array'}).FileIndex.filter(e=>e.type===2 && e.content && /\.(csv|xlsx|xls)$/i.test(e.name));
+      if(entries.some(e=>/tcs_sales/i.test(e.name))) entries = entries.filter(e=>/tcs_sales/i.test(e.name)); // Meesho: skip other sheets in the ZIP
+      if(!entries.length) throw new Error('no CSV / Excel file inside the ZIP');
+      return entries.map(e=>({name:f.name+' › '+e.name, size:e.size, load:()=>readTables(e.name, new Uint8Array(e.content))}));
     }
     // Like colIndex, but skips columns already taken and supports "!token" exclusions.
     function findCol(header, groups, used){
@@ -772,12 +455,16 @@
       fy:[['financial','year']],
       name:[['trade'],['legal','name'],['name']],
     };
-    function readPortal(rows, hint){
+    function nameType(n){ n = norm(n); return n.includes('tcs') && !n.includes('tds') ? 'TCS' : n.includes('tds') && !n.includes('tcs') ? 'TDS' : null; }
+    function readPortal(rows, fileName, sheet){
+      sheet = String(sheet||'').trim();
+      if(/^(tdsa|tcsa)$|amend/i.test(sheet)) return null; // GSTR-2A amendment sheets would double count
       const h = locateHeader(rows, PORTAL_COLS, c=>(c.gross>=0||c.net>=0||c.taxable>=0) && (c.igst>=0||c.cgst>=0||c.gstin>=0));
       if(!h) return null;
-      const c = h.cols, joined = norm(h.header.join(' ')), hn = norm(hint);
+      const c = h.cols, joined = norm(h.header.join(' '));
       const tcsHit = /gross|liable|gstr8|operator|ecommerce|collect/.test(joined), tdsHit = /deduct|gstr7/.test(joined);
-      const type = tdsHit && !tcsHit ? 'TDS' : tcsHit ? 'TCS' : (hn.includes('tds') && !hn.includes('tcs')) ? 'TDS' : 'TCS';
+      const type = tdsHit && !tcsHit ? 'TDS' : tcsHit ? 'TCS' : nameType(sheet) || (/^(sheet\d*)?$/i.test(sheet) ? nameType(fileName) : null);
+      if(!type) return null; // e.g. the B2B / CDNR sheets of a GSTR-2A workbook
       const order = type==='TCS' ? [c.net,c.taxable,c.gross] : [c.taxable,c.net,c.gross];
       const amtCol = order.find(i=>i>=0);
       const recs = rows.slice(h.start)
@@ -835,19 +522,25 @@
     }
 
     // ---------- File lists ----------
-    function addFiles(list, files, render, parse){
-      Array.from(files).forEach(async f=>{
-        if(list.some(p=>p.file.name===f.name && p.file.size===f.size)) return;
-        const item = {file:f, status:'reading...', month:periodFromName(f.name), role:/return/i.test(f.name) ? 'returns' : 'sales'};
+    function addSources(list, sources, render, parse){
+      sources.forEach(async src=>{
+        if(list.some(p=>p.name===src.name && p.size===src.size)) return;
+        const item = {name:src.name, size:src.size, status:'reading...', month:'month' in src ? src.month : periodFromName(src.name), role:/return/i.test(src.name) ? 'returns' : 'sales'};
         list.push(item); render();
         try{
-          const tables = (await readTables(f)).map(t=>parse(t.rows, f.name+' '+t.name)).filter(t=>t && t.rows.length);
+          const tables = (await src.load()).map(t=>parse(t.rows, src.name, t.name)).filter(t=>t && t.rows.length);
           if(!tables.length) throw new Error('no matching table found');
           item.tables = tables; item.hasPeriod = tables.every(t=>t.hasPeriod);
           item.status = describe(tables);
         }catch(err){ item.error = true; item.status = err.message; }
         render();
       });
+    }
+    async function addFiles(list, files, render, parse){
+      for(const f of Array.from(files)){
+        try{ addSources(list, await fileSources(f), render, parse); }
+        catch(err){ list.push({name:f.name, size:f.size, error:true, status:err.message}); render(); }
+      }
     }
     function describe(tables){
       const months = new Set(), counts = {};
@@ -867,14 +560,14 @@
     const portalListEl = root.querySelector('#gst-portalFiles'), reportListEl = root.querySelector('#gst-reportFiles');
     function renderPortalFiles(){
       portalListEl.innerHTML = portalFiles.map((p,i)=>`
-        <div class="fileitem"><span>${esc(p.file.name)}</span><span class="ctl">
+        <div class="fileitem"><span>${esc(p.name)}</span><span class="ctl">
           <span class="status ${p.error?'err':p.tables?'done':''}">${esc(p.status)}</span>${monthInput(p,i)}
           <span class="remove" data-i="${i}">&times;</span></span></div>`).join('');
       bindList(portalListEl, portalFiles, renderPortalFiles);
     }
     function renderReportFiles(){
       reportListEl.innerHTML = reportFiles.map((p,i)=>`
-        <div class="fileitem"><span>${esc(p.file.name)}</span><span class="ctl">
+        <div class="fileitem"><span>${esc(p.name)}</span><span class="ctl">
           <select data-role="${i}"><option value="sales"${p.role==='sales'?' selected':''}>Sales</option><option value="returns"${p.role==='returns'?' selected':''}>Returns</option></select>
           <span class="status ${p.error?'err':p.tables?'done':''}">${esc(p.status)}</span>${monthInput(p,i)}
           <span class="remove" data-i="${i}">&times;</span></span></div>`).join('');
@@ -883,6 +576,11 @@
     const portalInput = root.querySelector('#gst-filePortal'), reportInput = root.querySelector('#gst-fileReports');
     wireDrop(root.querySelector('#gst-dropPortal'), portalInput, files=>{ addFiles(portalFiles, files, renderPortalFiles, readPortal); portalInput.value=''; });
     wireDrop(root.querySelector('#gst-dropReports'), reportInput, files=>{ addFiles(reportFiles, files, renderReportFiles, readReport); reportInput.value=''; });
+    // Tables read straight off the portal page by the browser extension (gst-extension/).
+    document.addEventListener('gst:captured', e=>{
+      const d = e.detail||{};
+      addSources(portalFiles, [{name:d.name, size:d.at, month:toPeriod(d.month, fyStart(d.fy))||'', load:()=>(d.tables||[]).map(rows=>({name:'', rows}))}], renderPortalFiles, readPortal); // size: capture time, so two captures never look alike
+    });
 
     // ---------- Calculation ----------
     let gstPortal = [], gstReports = {}, gstTol = 10, gstRate = 0.05, ecoSel = 'all';
@@ -897,7 +595,7 @@
         portalFiles.forEach(f=>(f.tables||[]).forEach(t=>t.rows.forEach(r=>recs.push({...r, period:r.period||f.month||''}))));
         const pasted = root.querySelector('#gst-paste').value.trim();
         if(pasted){
-          const t = readPortal(Papa.parse(pasted,{skipEmptyLines:true, delimiter:pasted.includes('\t') ? '\t' : ''}).data, 'pasted');
+          const t = readPortal(Papa.parse(pasted,{skipEmptyLines:true, delimiter:pasted.includes('\t') ? '\t' : ''}).data, '', '');
           if(!t || !t.rows.length) throw new Error('Could not read the pasted table — include the header row (GSTIN, gross / net value, tax columns).');
           const month = root.querySelector('#gst-pasteMonth').value;
           t.rows.forEach(r=>recs.push({...r, period:r.period||month||''}));
@@ -1051,6 +749,3 @@
   })();
 
 })();
-</script>
-</body>
-</html>

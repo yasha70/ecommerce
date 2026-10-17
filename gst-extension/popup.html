@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GST TDS / TCS Calculator</title>
+<style>
+  body{margin:0;width:300px;font-family:'Inter',-apple-system,sans-serif;background:#f7f5ef;color:#1f2420;}
+  .head{background:#2a4130;color:#fff;padding:14px 16px;}
+  .head h1{font-family:'Source Serif Pro',Georgia,serif;font-size:16px;font-weight:600;margin:0 0 2px;}
+  .head p{margin:0;font-size:11.5px;color:#9db2a1;}
+  .body{padding:14px 16px 16px;}
+  ol{margin:0 0 14px;padding-left:18px;font-size:12.5px;color:#5a5f57;line-height:1.5;}
+  button{display:block;width:100%;border:none;border-radius:5px;padding:10px 12px;font-size:13.5px;font-weight:600;cursor:pointer;margin-bottom:8px;}
+  #capture{background:#3c5a44;color:#fff;}
+  #capture:hover{background:#2a4130;}
+  #capture:disabled{background:#b7bcb2;cursor:default;}
+  #open{background:#fff;color:#2a4130;border:1px solid #dcd8cc;}
+  #status{font-size:12.5px;margin-top:6px;min-height:16px;}
+  #status.err{color:#a6432f;}
+  #status.ok{color:#2a4130;}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>GST TDS / TCS Calculator</h1>
+    <p>Taxable amount &amp; report matching</p>
+  </div>
+  <div class="body">
+    <ol>
+      <li>On the GST portal open <b>Returns &rsaquo; TDS and TCS Credit Received</b>, pick the year and month, and open the TCS (or TDS) tab.</li>
+      <li>Click <b>Capture</b> &mdash; the table opens in the calculator. Repeat for each month or tab.</li>
+    </ol>
+    <button id="capture">Capture table from this page</button>
+    <button id="open">Open calculator</button>
+    <div id="status"></div>
+  </div>
+<script src="capture.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>
